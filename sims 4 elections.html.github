@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Election Framework</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--tx:#1d2330;--mut:#6b7280;--bd:#dde1e8;--ac:#3b5bdb;--good:#2f9e44;--bad:#e03131;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#14171d;--card:#1e222b;--tx:#e8eaf0;--mut:#9aa3b2;--bd:#323846;--ac:#7c93f5;--good:#51cf66;--bad:#ff6b6b}}
+:root[data-theme="dark"]{--bg:#14171d;--card:#1e222b;--tx:#e8eaf0;--mut:#9aa3b2;--bd:#323846;--ac:#7c93f5;--good:#51cf66;--bad:#ff6b6b}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.45 system-ui,sans-serif;padding:16px;max-width:980px;margin:auto}
+h1{font-size:20px;margin:0 0 12px}h2{font-size:16px;margin:0 0 8px}h3{font-size:14px;margin:12px 0 6px;color:var(--mut)}
+.tabs{display:flex;gap:6px;margin-bottom:12px}.tabs button{flex:1}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:12px;margin-bottom:12px}
+.row{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px}
+input,select,button{font:inherit;color:var(--tx);background:var(--card);border:1px solid var(--bd);border-radius:6px;padding:6px 8px;min-width:0}
+input{flex:1 1 130px}button{cursor:pointer}button.p{background:var(--ac);color:#fff;border-color:var(--ac)}button.t.on{background:var(--ac);color:#fff}
+button.d{color:var(--bad)}input[type=color]{flex:0 0 44px;padding:2px;height:34px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:12px}
+.pt{border-left:6px solid var(--ac)}.m{display:flex;gap:6px;align-items:center;justify-content:space-between;border-top:1px solid var(--bd);padding:6px 0;flex-wrap:wrap}
+.m small,.mut{color:var(--mut)}.badge{font-size:12px;border:1px solid var(--bd);border-radius:20px;padding:1px 8px}
+.bar{height:18px;border-radius:4px;margin:2px 0}.g{color:var(--good)}.b{color:var(--bad)}
+.tw{overflow-x:auto}table{border-collapse:collapse;width:100%}td,th{text-align:left;padding:4px 8px;border-bottom:1px solid var(--bd)}
+.hide{display:none}
+</style></head><body>
+<h1>Election Framework</h1>
+<div class="tabs"><button class="t on" id="t1" onclick="tab(1)">Parties &amp; Candidates</button><button class="t" id="t2" onclick="tab(2)">Election</button></div>
+
+<div id="v1">
+ <div class="card"><h2>Add party</h2><div class="row"><input id="pn" placeholder="Party name"><input type="color" id="pc" value="#3b5bdb"><button class="p" onclick="addParty()">Add party</button></div></div>
+ <div class="card"><h2>Add candidate</h2>
+  <div class="row"><input id="cn" placeholder="Name"><select id="cp"></select></div>
+  <div class="row"><input id="c1" list="roles" placeholder="Primary role"><input id="c2" list="roles" placeholder="Secondary role"><button class="p" onclick="addCand()">Add</button></div>
+  <datalist id="roles"><option>Mayor</option><option>Deputy Mayor</option><option>Councillor</option><option>Minister</option><option>Leader</option><option>Deputy Leader</option><option>Treasurer</option><option>Spokesperson</option><option>Whip</option><option>Strategist</option><option>Campaign Manager</option><option>Policy Lead</option></datalist>
+ </div>
+ <div class="grid" id="parties"></div>
+ <div class="card hide" id="unCard"><h2>Unassigned candidates</h2><div id="un"></div></div>
+ <div class="card"><h2>Former candidates</h2><div class="tw" id="former"></div></div>
+</div>
+
+<div id="v2" class="hide">
+ <div class="card"><h2>Election actions</h2>
+  <div class="row"><input id="en" placeholder="Election name (e.g. 2026 General)"></div>
+  <div class="row"><select id="ap"></select><input id="ad" placeholder="Brief description of action" maxlength="140"></div>
+  <div class="row">
+   <label><input type="radio" name="ae" value="1" checked style="flex:none"> Gain public votes</label>
+   <label><input type="radio" name="ae" value="-1" style="flex:none"> Lose public votes</label>
+   <label>Impact <select id="aw"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option></select></label>
+   <button class="p" onclick="addAction()">Add action</button></div>
+  <div id="alist"></div>
+  <div class="row" style="margin-top:8px"><label><input type="checkbox" id="rnd" style="flex:none"> Add random public swing</label><button class="p" onclick="runElection()">Run election</button></div>
+ </div>
+ <div class="card hide" id="resCard"><h2>Result</h2><div id="res"></div></div>
+ <div class="card"><h2>Past elections</h2><div id="hist" class="mut">None yet.</div></div>
+</div>
+
+<script>
+var S={parties:[],cands:[],actions:[],history:[]},KEY='election-framework-v1',MAX=8;
+try{var l=localStorage.getItem(KEY);if(l)S=JSON.parse(l)}catch(e){}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}render()}
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+function $(i){return document.getElementById(i)}
+function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6)}
+function party(id){return S.parties.find(function(p){return p.id==id})}
+function members(pid){return S.cands.filter(function(c){return c.status=='active'&&c.partyId==pid})}
+function tab(n){$('v1').classList.toggle('hide',n!=1);$('v2').classList.toggle('hide',n!=2);$('t1').classList.toggle('on',n==1);$('t2').classList.toggle('on',n==2)}
+
+function addParty(){var n=$('pn').value.trim();if(!n)return;S.parties.push({id:uid(),name:n,color:$('pc').value});$('pn').value='';save()}
+function delParty(id){var p=party(id);if(!confirm('Remove "'+p.name+'"? Its active members become unassigned.'))return;
+ S.cands.forEach(function(c){if(c.partyId==id&&c.status=='active')c.partyId=null});
+ S.parties=S.parties.filter(function(x){return x.id!=id});S.actions=S.actions.filter(function(a){return a.partyId!=id});save()}
+function addCand(){var n=$('cn').value.trim(),pid=$('cp').value;if(!n)return;
+ if(pid&&members(pid).length>=MAX){alert('That party already has '+MAX+' members. Remove one first.');return}
+ S.cands.push({id:uid(),name:n,partyId:pid||null,primary:$('c1').value.trim(),secondary:$('c2').value.trim(),status:'active'});
+ ['cn','c1','c2'].forEach(function(i){$(i).value=''});save()}
+function rmCand(id){var c=S.cands.find(function(x){return x.id==id});c.status='removed';c.reason=$('r'+id).value;c.date=new Date().toLocaleDateString();c.formerParty=c.partyId;save()}
+function assign(id){var pid=$('as'+id).value;if(!pid)return;if(members(pid).length>=MAX){alert('Party is full.');return}S.cands.find(function(x){return x.id==id}).partyId=pid;save()}
+
+var editing=null;
+function edit(id){editing=id;render()}
+function saveEdit(id){var c=S.cands.find(function(x){return x.id==id});
+ var n=$('en_'+id).value.trim()||c.name,p1=$('e1_'+id).value.trim(),p2=$('e2_'+id).value.trim(),pid=$('ep_'+id).value||null;
+ if(pid&&pid!=c.partyId&&members(pid).length>=MAX){alert('That party already has '+MAX+' members.');return}
+ var d=new Date().toLocaleDateString(),L=c.log=c.log||[];
+ if(p1!=(c.primary||''))L.push(d+' Primary: '+(c.primary||'none')+' → '+(p1||'none'));
+ if(p2!=(c.secondary||''))L.push(d+' Secondary: '+(c.secondary||'none')+' → '+(p2||'none'));
+ if(pid!=c.partyId){var o=party(c.partyId),w=party(pid);L.push(d+' Party: '+(o?o.name:'none')+' → '+(w?w.name:'none'))}
+ c.name=n;c.primary=p1;c.secondary=p2;c.partyId=pid;editing=null;save()}
+function memberRow(c,assignable){
+ if(editing==c.id){
+  return'<div class="m"><div class="row" style="width:100%;margin:0"><input id="en_'+c.id+'" value="'+esc(c.name)+'"><input id="e1_'+c.id+'" list="roles" value="'+esc(c.primary)+'" placeholder="Primary role"><input id="e2_'+c.id+'" list="roles" value="'+esc(c.secondary)+'" placeholder="Secondary role"><select id="ep_'+c.id+'"><option value="">Unassigned</option>'+S.parties.map(function(p){return'<option value="'+p.id+'"'+(p.id==c.partyId?' selected':'')+'>'+esc(p.name)+'</option>'}).join('')+'</select><button class="p" onclick="saveEdit(\''+c.id+'\')">Save</button><button onclick="edit(null)">Cancel</button></div></div>'}
+ var h='<div class="m"><div><b>'+esc(c.name)+'</b><br><small>'+esc(c.primary||'—')+(c.secondary?' / '+esc(c.secondary):'')+'</small>'+(c.log&&c.log.length?'<br><small class="mut">'+c.log.slice(-3).map(esc).join(' · ')+'</small>':'')+'</div><div class="row" style="margin:0">';
+ if(assignable){h+='<select id="as'+c.id+'">'+S.parties.map(function(p){return'<option value="'+p.id+'">'+esc(p.name)+'</option>'}).join('')+'</select><button onclick="assign(\''+c.id+'\')">Assign</button>'}
+ return h+'<button onclick="edit(\''+c.id+'\')">Edit</button><select id="r'+c.id+'"><option>Death</option><option>Resigned</option><option>Retired</option></select><button class="d" onclick="rmCand(\''+c.id+'\')">Remove</button></div></div>'}
+
+function render(){
+ var opts=S.parties.map(function(p){return'<option value="'+p.id+'">'+esc(p.name)+' ('+members(p.id).length+'/'+MAX+')</option>'}).join('');
+ var cur=$('cp').value;$('cp').innerHTML='<option value="">Unassigned</option>'+opts;$('cp').value=cur;
+ var cur2=$('ap').value;$('ap').innerHTML=opts||'<option value="">Add a party first</option>';$('ap').value=cur2;
+ $('parties').innerHTML=S.parties.map(function(p){var m=members(p.id);
+  return'<div class="card pt" style="border-left-color:'+esc(p.color)+'"><div class="row" style="justify-content:space-between"><h2 style="margin:0">'+esc(p.name)+' <span class="badge">'+m.length+'/'+MAX+'</span></h2><button class="d" onclick="delParty(\''+p.id+'\')">Remove party</button></div>'
+  +(m.length?m.map(function(c){return memberRow(c)}).join(''):'<div class="mut">No members.</div>')
+  +(m.length<MAX?'<div class="mut" style="margin-top:6px">'+(MAX-m.length)+' vacancy(ies)</div>':'')+'</div>'}).join('')||'<div class="mut">No parties yet.</div>';
+ var un=S.cands.filter(function(c){return c.status=='active'&&!c.partyId});
+ $('unCard').classList.toggle('hide',!un.length);$('un').innerHTML=un.map(function(c){return memberRow(c,S.parties.length>0)}).join('');
+ var fo=S.cands.filter(function(c){return c.status=='removed'});
+ $('former').innerHTML=fo.length?'<table><tr><th>Name</th><th>Party</th><th>Roles</th><th>Reason</th><th>Date</th></tr>'+fo.map(function(c){var p=party(c.formerParty);return'<tr><td>'+esc(c.name)+'</td><td>'+esc(p?p.name:'—')+'</td><td>'+esc(c.primary)+(c.secondary?' / '+esc(c.secondary):'')+'</td><td>'+esc(c.reason)+'</td><td>'+esc(c.date)+'</td></tr>'}).join('')+'</table>':'<span class="mut">None.</span>';
+ $('alist').innerHTML=S.actions.map(function(a){var p=party(a.partyId);return'<div class="m"><div><b>'+esc(p?p.name:'?')+'</b>: '+esc(a.desc)+'</div><div><span class="'+(a.effect>0?'g':'b')+'">'+(a.effect>0?'+ Gain':'− Lose')+' ×'+a.weight+'</span> <button class="d" onclick="delAction(\''+a.id+'\')">✕</button></div></div>'}).join('');
+ $('hist').innerHTML=S.history.length?S.history.slice().reverse().map(function(h){return'<div class="m"><div><b>'+esc(h.name)+'</b> <small>'+esc(h.date)+'</small></div><div>Winner: <b>'+esc(h.winner)+'</b> <small>('+h.results.map(function(r){return esc(r.name)+' '+r.share.toFixed(1)+'%'}).join(', ')+')</small></div></div>'}).join(''):'None yet.';
+}
+
+function addAction(){var d=$('ad').value.trim(),pid=$('ap').value;if(!d||!pid)return;
+ S.actions.push({id:uid(),partyId:pid,desc:d,effect:+document.querySelector('input[name=ae]:checked').value,weight:+$('aw').value});$('ad').value='';save()}
+function delAction(id){S.actions=S.actions.filter(function(a){return a.id!=id});save()}
+
+function runElection(){
+ if(S.parties.length<2){alert('Need at least 2 parties.');return}
+ var rnd=$('rnd').checked;
+ var rs=S.parties.map(function(p){
+  var net=0;S.actions.forEach(function(a){if(a.partyId==p.id)net+=a.effect*a.weight*5});
+  var swing=rnd?(Math.random()*30-15):0;
+  return{id:p.id,name:p.name,color:p.color,net:net,pts:Math.max(1,100+net+swing)}});
+ var tot=rs.reduce(function(s,r){return s+r.pts},0);
+ rs.forEach(function(r){r.share=r.pts/tot*100});
+ rs.sort(function(a,b){return b.pts-a.pts});
+ var name=$('en').value.trim()||'Election '+(S.history.length+1);
+ var top=rs.filter(function(r){return r.pts==rs[0].pts}),w=top[Math.floor(Math.random()*top.length)];
+ $('res').innerHTML='<p>Winner: <b style="font-size:18px">'+esc(w.name)+'</b>'+(top.length>1?' <span class="mut">(tie broken randomly)</span>':'')+'</p>'+rs.map(function(r){return'<div><b>'+esc(r.name)+'</b> — '+r.share.toFixed(1)+'% <small class="mut">(net action effect '+(r.net>0?'+':'')+r.net+')</small><div class="bar" style="width:'+r.share+'%;background:'+esc(r.color)+'"></div></div>'}).join('');
+ $('resCard').classList.remove('hide');
+ S.history.push({name:name,date:new Date().toLocaleDateString(),winner:w.name,results:rs.map(function(r){return{name:r.name,share:r.share}})});
+ S.actions=[];$('en').value='';
+ try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}
+ render();
+}
+render();
+</script></body></html>
