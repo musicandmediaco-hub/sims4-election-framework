@@ -57,7 +57,7 @@ button.d{color:var(--bad)}input[type=color]{flex:0 0 44px;padding:2px;height:34p
  <div class="card"><h2>Past elections</h2><div id="hist" class="mut">None yet.</div></div>
 </div>
 
-<div id="v3" class="hide"><div class="card"><h2>Government &amp; Opposition</h2><div class="mut" style="margin-bottom:8px">Each row is a portfolio. Read across to see who holds it in every party. The party of the current Mayor is the Government, the runner-up at the last election is the Opposition, and any other party is on the Crossbench.</div><div class="tw" id="opp"></div></div></div>
+<div id="v3" class="hide"><div class="card"><h2>Government &amp; Opposition</h2><div class="mut" style="margin-bottom:8px">Each row is a portfolio. Read across to see who holds it in every party. The party of the current Mayor is the Government, the runner-up at the last election is the Opposition, and any other party is on the Crossbench. Parties show as Undecided until an election has been run.</div><div class="tw" id="opp"></div></div></div>
 
 <script>
 var S={parties:[],cands:[],actions:[],history:[]},KEY='election-framework-v1',MAX=8;
@@ -79,15 +79,18 @@ function swapRoles(id){var c=S.cands.find(function(x){return x.id==id});if(!c||!
 function swapParty(pid){var m=members(pid).filter(function(c){return c.secondary});if(!m.length){alert('No members of this party have a secondary role to swap.');return}
  if(!confirm('Swap primary and secondary roles for '+m.length+' member(s) of '+party(pid).name+'?'))return;var d=new Date().toLocaleDateString();m.forEach(function(c){setRoles(c,c.secondary,c.primary||'',d)});save()}
 function opp(c){var f=portfolio(c);if(!f||!c.partyId)return'';var o=S.cands.filter(function(x){return x.status=='active'&&x.id!=c.id&&x.partyId&&x.partyId!=c.partyId&&portfolio(x)==f}).map(function(x){var p=party(x.partyId);return esc(x.name)+' ('+esc(p?p.name:'?')+')'});return o.length?'<br><small class="mut">⚔ Opposite number: '+o.join(', ')+'</small>':''}
+function pstat(p,govP){if(!govP)return'';if(p.id==govP)return'Government';if(!S.oppId||!party(S.oppId))return'Undecided';return p.id==S.oppId?'Opposition':'Crossbench'}
+function stBadge(t){if(!t)return'';var k={Government:'g',Opposition:'b',Crossbench:'mut',Undecided:'mut'}[t];return'<span class="badge '+k+'">'+t+'</span>'}
 function oppView(){var ps=S.parties;if(!ps.length)return'<span class="mut">Add parties first.</span>';
  var act=S.cands.filter(function(c){return c.status=='active'}),gov=act.find(function(c){return c.primary=='Mayor'}),govP=gov?gov.partyId:null,gp=gov?party(gov.partyId):null;
  var top='<p>'+(gov?'Mayor: <b>'+esc(gov.name)+'</b>'+(gp?' ('+esc(gp.name)+')':''):'<span class="mut">No Mayor yet. Run an election to set the Government.</span>')+'</p>';
- var head='<tr><th>Portfolio</th>'+ps.map(function(p){return'<th style="border-bottom:3px solid '+esc(p.color)+'">'+esc(p.name)+'<br><small class="'+(govP&&p.id==govP?'g':'mut')+'">'+(govP?(p.id==govP?'Government':(!S.oppId||p.id==S.oppId?'Opposition':'Crossbench')):'')+'</small></th>'}).join('')+'</tr>';
+ var head='<tr><th>Portfolio</th>'+ps.map(function(p){return'<th style="border-bottom:3px solid '+esc(p.color)+'">'+esc(p.name)+'<br>'+stBadge(pstat(p,govP))+'</th>'}).join('')+'</tr>';
+ var sm=govP?'<p>'+['Government','Opposition','Crossbench','Undecided'].map(function(t){var n=ps.filter(function(p){return pstat(p,govP)==t}).map(function(p){return esc(p.name)});return n.length?stBadge(t)+' <b>'+n.join(', ')+'</b>':''}).filter(Boolean).join(' &nbsp; ')+'</p>':'';
  var rows=ROLES.filter(function(r){return act.some(function(c){return portfolio(c)==r})});
  var body=rows.map(function(r){return'<tr><td><b>'+esc(r)+'</b></td>'+ps.map(function(p){var h=act.filter(function(c){return c.partyId==p.id&&portfolio(c)==r});return'<td>'+(h.map(function(c){return esc(c.name)+(c.primary=='Mayor'?' <span class="badge">Mayor</span>':'')}).join('<br>')||'<span class="mut">—</span>')+'</td>'}).join('')+'</tr>'}).join('');
  var oth=act.filter(function(c){return !portfolio(c)&&c.partyId});
  if(oth.length)body+='<tr><td><b>Other roles</b></td>'+ps.map(function(p){return'<td>'+(oth.filter(function(c){return c.partyId==p.id}).map(function(c){return esc(c.name)+' <small class="mut">('+esc(c.primary||'no role')+(c.secondary?' / '+esc(c.secondary):'')+')</small>'}).join('<br>')||'<span class="mut">—</span>')+'</td>'}).join('')+'</tr>';
- return top+(body?'<table>'+head+body+'</table>':'<span class="mut">No portfolio roles assigned yet.</span>')}
+ return top+sm+(body?'<table>'+head+body+'</table>':'<span class="mut">No portfolio roles assigned yet.</span>')}
 
 function addParty(){var n=$('pn').value.trim();if(!n)return;S.parties.push({id:uid(),name:n,color:$('pc').value});$('pn').value='';save()}
 function delParty(id){var p=party(id);if(!confirm('Remove "'+p.name+'"? Its active members become unassigned.'))return;
