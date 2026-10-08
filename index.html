@@ -20,6 +20,8 @@ button.d{color:var(--bad)}input[type=color]{flex:0 0 44px;padding:2px;height:34p
 .bar{height:18px;border-radius:4px;margin:2px 0}.g{color:var(--good)}.b{color:var(--bad)}
 .tw{overflow-x:auto}table{border-collapse:collapse;width:100%}td,th{text-align:left;padding:4px 8px;border-bottom:1px solid var(--bd)}
 .hide{display:none}
+.lane{padding:8px 0;border-top:1px solid var(--bd)}.seat{width:26px;height:26px;border:2px solid var(--bd);border-radius:6px;display:inline-block;margin:4px 4px 4px 0;transition:background .3s}
+.av{width:40px;height:40px;border-radius:50%;object-fit:cover;background:var(--bd);display:inline-flex;align-items:center;justify-content:center;flex:none;font-weight:600}
 </style></head><body>
 <h1>Election Framework</h1>
 <div class="tabs"><button class="t on" id="t1" onclick="tab(1)">Parties &amp; Candidates</button><button class="t" id="t2" onclick="tab(2)">Election</button></div>
@@ -28,8 +30,8 @@ button.d{color:var(--bad)}input[type=color]{flex:0 0 44px;padding:2px;height:34p
  <div class="card"><h2>Add party</h2><div class="row"><input id="pn" placeholder="Party name"><input type="color" id="pc" value="#3b5bdb"><button class="p" onclick="addParty()">Add party</button></div></div>
  <div class="card"><h2>Add candidate</h2>
   <div class="row"><input id="cn" placeholder="Name"><select id="cp"></select></div>
-  <div class="row"><input id="c1" list="roles" placeholder="Primary role"><input id="c2" list="roles" placeholder="Secondary role"><button class="p" onclick="addCand()">Add</button></div>
-  <datalist id="roles"><option>Mayor</option><option>Deputy Mayor</option><option>Councillor</option><option>Minister</option><option>Leader</option><option>Deputy Leader</option><option>Treasurer</option><option>Spokesperson</option><option>Whip</option><option>Strategist</option><option>Campaign Manager</option><option>Policy Lead</option></datalist>
+  <div class="row"><input id="c1" list="roles" placeholder="Primary role"><input id="c2" list="roles" placeholder="Secondary role"><input type="file" id="cf" accept="image/*" title="Photo"><button class="p" onclick="addCand()">Add</button></div>
+  <datalist id="roles"></datalist>
  </div>
  <div class="grid" id="parties"></div>
  <div class="card hide" id="unCard"><h2>Unassigned candidates</h2><div id="un"></div></div>
@@ -39,7 +41,9 @@ button.d{color:var(--bad)}input[type=color]{flex:0 0 44px;padding:2px;height:34p
 <div id="v2" class="hide">
  <div class="card"><h2>Election actions</h2>
   <div class="row"><input id="en" placeholder="Election name (e.g. 2026 General)"></div>
-  <div class="row"><select id="ap"></select><input id="ad" placeholder="Brief description of action" maxlength="140"></div>
+  <div class="row"><label>Eligible voters <input type="number" id="ev" min="0" step="1" onchange="setVoters()"></label><span class="mut">Voting is compulsory, so everyone votes.</span></div>
+  <h3>Election fees (a party runs only if it has paid and has 8 members)</h3><div id="fees"></div>
+  <div class="row"><select id="ap" onchange="render()"></select><select id="at"></select><input id="ad" placeholder="Brief description of action" maxlength="140"></div>
   <div class="row">
    <label><input type="radio" name="ae" value="1" checked style="flex:none"> Gain public votes</label>
    <label><input type="radio" name="ae" value="-1" style="flex:none"> Lose public votes</label>
@@ -48,7 +52,7 @@ button.d{color:var(--bad)}input[type=color]{flex:0 0 44px;padding:2px;height:34p
   <div id="alist"></div>
   <div class="row" style="margin-top:8px"><label><input type="checkbox" id="rnd" style="flex:none"> Add random public swing</label><button class="p" onclick="runElection()">Run election</button></div>
  </div>
- <div class="card hide" id="resCard"><h2>Result</h2><div id="res"></div></div>
+ <div class="card hide" id="resCard"><h2>Result</h2><div id="race"></div><div class="row" id="rctl" style="margin-top:6px"></div><div id="rfin"></div></div>
  <div class="card"><h2>Past elections</h2><div id="hist" class="mut">None yet.</div></div>
 </div>
 
@@ -59,6 +63,8 @@ function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}render
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
 function $(i){return document.getElementById(i)}
 function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6)}
+var ROLES=['Finance Minister','Foreign Affairs Minister','Arts Minister','Police Minister','Health Minister','Travel Minister','Wellness Minister','Science Minister','Small Business','Environment','Communications','Entertainment','Education','Technology & Innovation','Public Happiness','Minister for Trade','Citizen Welfare Minister','Magical Affairs Spokesperson','Minister for Justice','Jobs & Industry Minister','Economic Sovereignty Minister','Minister for Sustainable Development','Energy and Resources Minister'];
+document.getElementById('roles').innerHTML=['Mayor','Former Mayor'].concat(ROLES,ROLES.map(function(r){return'Opposition '+r})).map(function(r){return'<option>'+esc(r)+'</option>'}).join('');
 function party(id){return S.parties.find(function(p){return p.id==id})}
 function members(pid){return S.cands.filter(function(c){return c.status=='active'&&c.partyId==pid})}
 function tab(n){$('v1').classList.toggle('hide',n!=1);$('v2').classList.toggle('hide',n!=2);$('t1').classList.toggle('on',n==1);$('t2').classList.toggle('on',n==2)}
@@ -69,11 +75,18 @@ function delParty(id){var p=party(id);if(!confirm('Remove "'+p.name+'"? Its acti
  S.parties=S.parties.filter(function(x){return x.id!=id});S.actions=S.actions.filter(function(a){return a.partyId!=id});save()}
 function addCand(){var n=$('cn').value.trim(),pid=$('cp').value;if(!n)return;
  if(pid&&members(pid).length>=MAX){alert('That party already has '+MAX+' members. Remove one first.');return}
- S.cands.push({id:uid(),name:n,partyId:pid||null,primary:$('c1').value.trim(),secondary:$('c2').value.trim(),status:'active'});
- ['cn','c1','c2'].forEach(function(i){$(i).value=''});save()}
+ var q1=$('c1').value.trim(),q2=$('c2').value.trim();
+ readPhoto($('cf'),function(ph){S.cands.push({id:uid(),name:n,partyId:pid||null,primary:q1,secondary:q2,status:'active',photo:ph});
+ ['cn','c1','c2','cf'].forEach(function(i){$(i).value=''});save()})}
 function rmCand(id){var c=S.cands.find(function(x){return x.id==id});c.status='removed';c.reason=$('r'+id).value;c.date=new Date().toLocaleDateString();c.formerParty=c.partyId;save()}
 function assign(id){var pid=$('as'+id).value;if(!pid)return;if(members(pid).length>=MAX){alert('Party is full.');return}S.cands.find(function(x){return x.id==id}).partyId=pid;save()}
 
+function readPhoto(inp,cb){var f=inp&&inp.files&&inp.files[0];if(!f)return cb(null);var r=new FileReader();r.onload=function(){var im=new Image();im.onload=function(){var s=120,cv=document.createElement('canvas');cv.width=cv.height=s;var m=Math.min(im.width,im.height);cv.getContext('2d').drawImage(im,(im.width-m)/2,(im.height-m)/2,m,m,0,0,s,s);cb(cv.toDataURL('image/jpeg',0.8))};im.onerror=function(){cb(null)};im.src=r.result};r.onerror=function(){cb(null)};r.readAsDataURL(f)}
+function av(c){return c.photo?'<img class="av" alt="" src="'+c.photo+'">':'<span class="av">'+esc((c.name||'?').charAt(0).toUpperCase())+'</span>'}
+function setVoters(){S.eligible=Math.max(0,parseInt($('ev').value)||0);save()}
+function today(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
+function fee(pid){S.fees=S.fees||{};return S.fees[pid]||(S.fees[pid]={paid:false,amount:null,date:today()})}
+function setFee(pid,k,v){var f=fee(pid);if(k=='amount')v=v===''?null:parseFloat(v);if(k=='date'&&!v)v=today();f[k]=v;save()}
 var editing=null;
 function edit(id){editing=id;render()}
 function saveEdit(id){var c=S.cands.find(function(x){return x.id==id});
@@ -83,18 +96,21 @@ function saveEdit(id){var c=S.cands.find(function(x){return x.id==id});
  if(p1!=(c.primary||''))L.push(d+' Primary: '+(c.primary||'none')+' → '+(p1||'none'));
  if(p2!=(c.secondary||''))L.push(d+' Secondary: '+(c.secondary||'none')+' → '+(p2||'none'));
  if(pid!=c.partyId){var o=party(c.partyId),w=party(pid);L.push(d+' Party: '+(o?o.name:'none')+' → '+(w?w.name:'none'))}
- c.name=n;c.primary=p1;c.secondary=p2;c.partyId=pid;editing=null;save()}
+ readPhoto($('ef_'+id),function(ph){c.name=n;c.primary=p1;c.secondary=p2;c.partyId=pid;c.notes=$('enote_'+id).value.trim();if(ph)c.photo=ph;editing=null;save()})}
 function memberRow(c,assignable){
  if(editing==c.id){
-  return'<div class="m"><div class="row" style="width:100%;margin:0"><input id="en_'+c.id+'" value="'+esc(c.name)+'"><input id="e1_'+c.id+'" list="roles" value="'+esc(c.primary)+'" placeholder="Primary role"><input id="e2_'+c.id+'" list="roles" value="'+esc(c.secondary)+'" placeholder="Secondary role"><select id="ep_'+c.id+'"><option value="">Unassigned</option>'+S.parties.map(function(p){return'<option value="'+p.id+'"'+(p.id==c.partyId?' selected':'')+'>'+esc(p.name)+'</option>'}).join('')+'</select><button class="p" onclick="saveEdit(\''+c.id+'\')">Save</button><button onclick="edit(null)">Cancel</button></div></div>'}
- var h='<div class="m"><div><b>'+esc(c.name)+'</b><br><small>'+esc(c.primary||'—')+(c.secondary?' / '+esc(c.secondary):'')+'</small>'+(c.log&&c.log.length?'<br><small class="mut">'+c.log.slice(-3).map(esc).join(' · ')+'</small>':'')+'</div><div class="row" style="margin:0">';
+  return'<div class="m"><div class="row" style="width:100%;margin:0"><input id="en_'+c.id+'" value="'+esc(c.name)+'"><input id="e1_'+c.id+'" list="roles" value="'+esc(c.primary)+'" placeholder="Primary role"><input id="e2_'+c.id+'" list="roles" value="'+esc(c.secondary)+'" placeholder="Secondary role"><input id="enote_'+c.id+'" value="'+esc(c.notes)+'" placeholder="Notes (e.g. Former Mayor)"><select id="ep_'+c.id+'"><option value="">Unassigned</option>'+S.parties.map(function(p){return'<option value="'+p.id+'"'+(p.id==c.partyId?' selected':'')+'>'+esc(p.name)+'</option>'}).join('')+'</select><input type="file" id="ef_'+c.id+'" accept="image/*" title="New photo"><button class="p" onclick="saveEdit(\''+c.id+'\')">Save</button><button onclick="edit(null)">Cancel</button></div></div>'}
+ var h='<div class="m"><div style="display:flex;gap:8px;align-items:center">'+av(c)+'<div><b>'+esc(c.name)+'</b><br><small>'+esc(c.primary||'—')+(c.secondary?' / '+esc(c.secondary):'')+'</small>'+(c.log&&c.log.length?'<br><small class="mut">'+c.log.slice(-3).map(esc).join(' · ')+'</small>':'')+(c.notes?'<br><small class="mut">📝 '+esc(c.notes)+'</small>':'')+'</div></div><div class="row" style="margin:0">';
  if(assignable){h+='<select id="as'+c.id+'">'+S.parties.map(function(p){return'<option value="'+p.id+'">'+esc(p.name)+'</option>'}).join('')+'</select><button onclick="assign(\''+c.id+'\')">Assign</button>'}
  return h+'<button onclick="edit(\''+c.id+'\')">Edit</button><select id="r'+c.id+'"><option>Death</option><option>Resigned</option><option>Retired</option></select><button class="d" onclick="rmCand(\''+c.id+'\')">Remove</button></div></div>'}
 
 function render(){
+ $('ev').value=S.eligible||'';
+ $('fees').innerHTML=S.parties.length?S.parties.map(function(p){var f=fee(p.id);return'<div class="m"><div><b style="color:'+esc(p.color)+'">'+esc(p.name)+'</b>'+(members(p.id).length<MAX?' <small class="b">Not eligible: '+members(p.id).length+'/'+MAX+' members</small>':'')+'</div><div class="row" style="margin:0"><label><input type="checkbox" style="flex:none"'+(f.paid?' checked':'')+' onchange="setFee(\''+p.id+'\',\'paid\',this.checked)"> Paid</label><input type="number" min="0" step="any" placeholder="Fee amount" style="flex:0 1 120px" value="'+(f.amount==null?'':f.amount)+'" onchange="setFee(\''+p.id+'\',\'amount\',this.value)"><input type="date" style="flex:0 1 150px" value="'+esc(f.date)+'" onchange="setFee(\''+p.id+'\',\'date\',this.value)"></div></div>'}).join(''):'<span class="mut">Add parties first.</span>';
  var opts=S.parties.map(function(p){return'<option value="'+p.id+'">'+esc(p.name)+' ('+members(p.id).length+'/'+MAX+')</option>'}).join('');
  var cur=$('cp').value;$('cp').innerHTML='<option value="">Unassigned</option>'+opts;$('cp').value=cur;
  var cur2=$('ap').value;$('ap').innerHTML=opts||'<option value="">Add a party first</option>';$('ap').value=cur2;
+ var cv=$('at').value;$('at').innerHTML='<option value="">Whole party</option>'+members($('ap').value).map(function(c){return'<option value="'+c.id+'">'+esc(c.name)+'</option>'}).join('');$('at').value=cv;
  $('parties').innerHTML=S.parties.map(function(p){var m=members(p.id);
   return'<div class="card pt" style="border-left-color:'+esc(p.color)+'"><div class="row" style="justify-content:space-between"><h2 style="margin:0">'+esc(p.name)+' <span class="badge">'+m.length+'/'+MAX+'</span></h2><button class="d" onclick="delParty(\''+p.id+'\')">Remove party</button></div>'
   +(m.length?m.map(function(c){return memberRow(c)}).join(''):'<div class="mut">No members.</div>')
@@ -103,32 +119,61 @@ function render(){
  $('unCard').classList.toggle('hide',!un.length);$('un').innerHTML=un.map(function(c){return memberRow(c,S.parties.length>0)}).join('');
  var fo=S.cands.filter(function(c){return c.status=='removed'});
  $('former').innerHTML=fo.length?'<table><tr><th>Name</th><th>Party</th><th>Roles</th><th>Reason</th><th>Date</th></tr>'+fo.map(function(c){var p=party(c.formerParty);return'<tr><td>'+esc(c.name)+'</td><td>'+esc(p?p.name:'—')+'</td><td>'+esc(c.primary)+(c.secondary?' / '+esc(c.secondary):'')+'</td><td>'+esc(c.reason)+'</td><td>'+esc(c.date)+'</td></tr>'}).join('')+'</table>':'<span class="mut">None.</span>';
- $('alist').innerHTML=S.actions.map(function(a){var p=party(a.partyId);return'<div class="m"><div><b>'+esc(p?p.name:'?')+'</b>: '+esc(a.desc)+'</div><div><span class="'+(a.effect>0?'g':'b')+'">'+(a.effect>0?'+ Gain':'− Lose')+' ×'+a.weight+'</span> <button class="d" onclick="delAction(\''+a.id+'\')">✕</button></div></div>'}).join('');
- $('hist').innerHTML=S.history.length?S.history.slice().reverse().map(function(h){return'<div class="m"><div><b>'+esc(h.name)+'</b> <small>'+esc(h.date)+'</small></div><div>Winner: <b>'+esc(h.winner)+'</b> <small>('+h.results.map(function(r){return esc(r.name)+' '+r.share.toFixed(1)+'%'}).join(', ')+')</small></div></div>'}).join(''):'None yet.';
+ $('alist').innerHTML=S.actions.map(function(a){var p=party(a.partyId);return'<div class="m"><div><b>'+esc(p?p.name:'?')+'</b>'+(a.candId?' ('+esc((S.cands.find(function(c){return c.id==a.candId})||{}).name||'?')+')':'')+': '+esc(a.desc)+'</div><div><span class="'+(a.effect>0?'g':'b')+'">'+(a.effect>0?'+ Gain':'− Lose')+' ×'+a.weight+'</span> <button class="d" onclick="delAction(\''+a.id+'\')">✕</button></div></div>'}).join('');
+ $('hist').innerHTML=S.history.length?S.history.slice().reverse().map(function(h){return'<div class="m"><div><b>'+esc(h.name)+'</b> <small>'+esc(h.date)+'</small>'+(h.fees&&h.fees.length?'<br><small class="mut">Fees: '+h.fees.map(function(f){return esc(f.name)+' '+(f.amount==null?'(amount not set)':esc(f.amount))+' paid '+esc(f.date)}).join('; ')+'</small>':'')+'</div><div>Winner: <b>'+esc(h.winner)+'</b>'+(h.mayor?' · Mayor: <b>'+esc(h.mayor)+'</b>':'')+(h.hung?' · Mayor unchanged':'')+' <small>('+h.results.map(function(r){return esc(r.name)+' '+r.share.toFixed(1)+'%'+(r.votes?' ('+r.votes.toLocaleString()+')':'')}).join(', ')+')</small></div></div>'}).join(''):'None yet.';
 }
 
 function addAction(){var d=$('ad').value.trim(),pid=$('ap').value;if(!d||!pid)return;
- S.actions.push({id:uid(),partyId:pid,desc:d,effect:+document.querySelector('input[name=ae]:checked').value,weight:+$('aw').value});$('ad').value='';save()}
+ S.actions.push({id:uid(),partyId:pid,candId:$('at').value||null,desc:d,effect:+document.querySelector('input[name=ae]:checked').value,weight:+$('aw').value});$('ad').value='';save()}
 function delAction(id){S.actions=S.actions.filter(function(a){return a.id!=id});save()}
 
+var timer=null,R=null;
+function pick(ws){var t=0;ws.forEach(function(w){t+=w});var r=Math.random()*t;for(var i=0;i<ws.length;i++){r-=ws[i];if(r<=0)return i}return ws.length-1}
 function runElection(){
  if(S.parties.length<2){alert('Need at least 2 parties.');return}
+ var cp=S.parties.filter(function(p){return fee(p.id).paid&&members(p.id).length>=MAX});
+ if(cp.length<2){alert('At least 2 parties must have paid their election fee and have 8 members to run.');return}
  var rnd=$('rnd').checked;
- var rs=S.parties.map(function(p){
-  var net=0;S.actions.forEach(function(a){if(a.partyId==p.id)net+=a.effect*a.weight*5});
-  var swing=rnd?(Math.random()*30-15):0;
-  return{id:p.id,name:p.name,color:p.color,net:net,pts:Math.max(1,100+net+swing)}});
- var tot=rs.reduce(function(s,r){return s+r.pts},0);
- rs.forEach(function(r){r.share=r.pts/tot*100});
- rs.sort(function(a,b){return b.pts-a.pts});
- var name=$('en').value.trim()||'Election '+(S.history.length+1);
- var top=rs.filter(function(r){return r.pts==rs[0].pts}),w=top[Math.floor(Math.random()*top.length)];
- $('res').innerHTML='<p>Winner: <b style="font-size:18px">'+esc(w.name)+'</b>'+(top.length>1?' <span class="mut">(tie broken randomly)</span>':'')+'</p>'+rs.map(function(r){return'<div><b>'+esc(r.name)+'</b> — '+r.share.toFixed(1)+'% <small class="mut">(net action effect '+(r.net>0?'+':'')+r.net+')</small><div class="bar" style="width:'+r.share+'%;background:'+esc(r.color)+'"></div></div>'}).join('');
- $('resCard').classList.remove('hide');
- S.history.push({name:name,date:new Date().toLocaleDateString(),winner:w.name,results:rs.map(function(r){return{name:r.name,share:r.share}})});
- S.actions=[];$('en').value='';
- try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}
- render();
+ var rs=cp.map(function(p){var net=0;S.actions.forEach(function(a){if(a.partyId==p.id)net+=a.effect*a.weight*5});var sw=rnd?(Math.random()*30-15):0;return{id:p.id,name:p.name,color:p.color,pts:Math.max(1,100+net+sw)}});
+ var mem=rs.map(function(r){return members(r.id).map(function(c){var n=0;S.actions.forEach(function(a){if(a.candId==c.id)n+=a.effect*a.weight*5});return{c:c,w:Math.max(1,100+n)}})});
+ var N=S.eligible>0?S.eligible:500,pw=rs.map(function(r){return r.pts}),pc=rs.map(function(){return 0}),mc=mem.map(function(m){return m.map(function(){return 0})}),balls=[],win=-1;
+ for(var i=0;i<N&&i<100000;i++){var a=pick(pw),b=pick(mem[a].map(function(m){return m.w}));balls.push([a,b]);pc[a]++;mc[a][b]++;if(pc[a]>=80){win=a;break}}
+ var seatWin=win>=0;
+ var mi=win>=0?mc[win].indexOf(Math.max.apply(null,mc[win])):-1;
+ R={rs:rs,mem:mem,balls:balls,win:win,mi:mi,seatWin:seatWin,N:N,cp:cp,fpc:pc.slice(),done:false,name:$('en').value.trim()||'Election '+(S.history.length+1)};
+ $('resCard').classList.remove('hide');playRace();
 }
+function playRace(){clearInterval(timer);R.i=0;R.pc=R.rs.map(function(){return 0});R.mc=R.mem.map(function(m){return m.map(function(){return 0})});
+ $('rfin').innerHTML='';$('rctl').innerHTML='<button onclick="skipRace()">Skip ⏭</button>';drawRace();
+ var step=Math.max(1,Math.ceil(R.balls.length/300)),iv=30000/Math.ceil(R.balls.length/step);
+ timer=setInterval(function(){var e=Math.min(R.balls.length,R.i+step);for(;R.i<e;R.i++){var b=R.balls[R.i];R.pc[b[0]]++;R.mc[b[0]][b[1]]++}drawRace();if(R.i>=R.balls.length)finishRace()},iv)}
+function skipRace(){if(!R)return;for(;R.i<R.balls.length;R.i++){var b=R.balls[R.i];R.pc[b[0]]++;R.mc[b[0]][b[1]]++}drawRace();finishRace()}
+function drawRace(){$('race').innerHTML=R.rs.map(function(r,pi){var v=R.pc[pi],seats=Math.min(8,Math.floor(v/10)),bx='';
+  for(var k=0;k<8;k++)bx+='<span class="seat" style="'+(k<seats?'background:'+esc(r.color)+';border-color:'+esc(r.color):'')+'"></span>';
+  var m=R.mc[pi],best=m.indexOf(Math.max.apply(null,m)),lead=v?esc(R.mem[pi][best].c.name)+' ('+m[best]+')':'—';
+  return'<div class="lane"><div class="row" style="justify-content:space-between;margin:0"><b style="color:'+esc(r.color)+'">'+esc(r.name)+'</b><span>'+seats+'/8 seats · '+v.toLocaleString()+' votes</span></div><div>'+bx+'</div><small class="mut">Leading candidate: '+lead+'</small></div>'}).join('')
+  +'<div class="mut">Ballots counted: '+R.i.toLocaleString()+' of '+R.N.toLocaleString()+' eligible voters</div>'}
+function finishRace(){clearInterval(timer);var hung=R.win<0,w=hung?null:R.rs[R.win],mayor=hung?null:R.mem[R.win][R.mi].c;
+ if(!R.done){R.done=true;commitElection(w,mayor)}
+ $('rctl').innerHTML='<button onclick="playRace()">Replay ↻</button>';
+ var note=S.eligible>0?'':'<p class="mut">Eligible voters not set, so 500 sample ballots were used.</p>';
+ $('rfin').innerHTML=hung?'<div class="card" style="margin:8px 0 0"><p style="margin:0">🏛️ <b>Hung parliament</b></p><p class="mut">No party reached 8 seats, so nobody wins. The current Mayor stays in place until the next election.</p>'+note+'</div>'
+ :'<div class="card" style="margin:8px 0 0"><p style="margin:0">🏆 Winner: <b style="color:'+esc(w.color)+'">'+esc(w.name)+'</b></p><div style="display:flex;gap:8px;align-items:center;margin-top:6px">'+av(mayor)+'<div>New Mayor: <b>'+esc(mayor.name)+'</b></div></div>'+note+'</div>'}
+function portfolio(c){var st=function(x){return(x||'').replace(/^Opposition /,'')},a=st(c.primary),b=st(c.secondary);return ROLES.indexOf(a)>=0?a:ROLES.indexOf(b)>=0?b:null}
+function setRoles(c,p,sc,d){var L=c.log=c.log||[];if((c.primary||'')!=p)L.push(d+' Primary: '+(c.primary||'none')+' → '+(p||'none'));if((c.secondary||'')!=sc)L.push(d+' Secondary: '+(c.secondary||'none')+' → '+(sc||'none'));c.primary=p;c.secondary=sc}
+function commitElection(w,mayor){var d=new Date().toLocaleDateString();
+ if(w){
+  var pf={};S.cands.forEach(function(c){if(c.status=='active')pf[c.id]=portfolio(c)});
+  S.cands.forEach(function(c){if(c.status!='active'||c.id==mayor.id)return;
+   var wasM=c.primary=='Mayor',pri=wasM?(pf[c.id]||''):(c.primary||''),sec=wasM?'':(c.secondary||''),run=R.cp.some(function(p){return p.id==c.partyId});
+   if(run){if(c.partyId==w.id){if(/^Opposition /.test(sec))sec=''}else if(pf[c.id])sec='Opposition '+pf[c.id]}
+   if(wasM)c.notes=(c.notes?c.notes+'; ':'')+'Former Mayor (until '+d+')';
+   setRoles(c,pri,sec,d)});
+  var ms=pf[mayor.id]||(/^Opposition /.test(mayor.secondary||'')?'':(mayor.secondary||''));
+  setRoles(mayor,'Mayor',ms,d);
+ }
+ var tot=R.fpc.reduce(function(s,v){return s+v},0)||1;
+ S.history.push({name:R.name,date:d,winner:w?w.name:'Hung parliament',hung:!w,mayor:mayor?mayor.name:null,fees:R.cp.map(function(p){var f=fee(p.id);return{name:p.name,amount:f.amount,date:f.date}}),results:R.rs.map(function(r,i){return{name:r.name,share:R.fpc[i]/tot*100,votes:R.fpc[i]}}).sort(function(a,b){return b.votes-a.votes})});
+ S.actions=[];R.cp.forEach(function(p){var f=fee(p.id);f.paid=false;f.date=today()});$('en').value='';save()}
 render();
 </script></body></html>
