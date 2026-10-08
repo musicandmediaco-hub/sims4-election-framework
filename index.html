@@ -24,7 +24,8 @@ button.d{color:var(--bad)}input[type=color]{flex:0 0 44px;padding:2px;height:34p
 .av{width:40px;height:40px;border-radius:50%;object-fit:cover;background:var(--bd);display:inline-flex;align-items:center;justify-content:center;flex:none;font-weight:600}
 </style></head><body>
 <h1>Election Framework</h1>
-<div class="tabs"><button class="t on" id="t1" onclick="tab(1)">Parties &amp; Candidates</button><button class="t" id="t2" onclick="tab(2)">Election</button></div>
+<div class="row"><button onclick="exportData()">⬇ Export backup</button><button onclick="$('imp').click()">⬆ Import backup</button><input type="file" id="imp" accept=".json,application/json" class="hide" onchange="importData(this)"><span class="mut">Back up regularly — data is stored in this browser only.</span></div>
+<div class="tabs"><button class="t on" id="t1" onclick="tab(1)">Parties &amp; Candidates</button><button class="t" id="t2" onclick="tab(2)">Election</button><button class="t" id="t3" onclick="tab(3)">Government &amp; Opposition</button></div>
 
 <div id="v1">
  <div class="card"><h2>Add party</h2><div class="row"><input id="pn" placeholder="Party name"><input type="color" id="pc" value="#3b5bdb"><button class="p" onclick="addParty()">Add party</button></div></div>
@@ -56,6 +57,8 @@ button.d{color:var(--bad)}input[type=color]{flex:0 0 44px;padding:2px;height:34p
  <div class="card"><h2>Past elections</h2><div id="hist" class="mut">None yet.</div></div>
 </div>
 
+<div id="v3" class="hide"><div class="card"><h2>Government &amp; Opposition</h2><div class="mut" style="margin-bottom:8px">Each row is a portfolio. Read across to see who holds it in every party. The party of the current Mayor is the Government and the others are the Opposition.</div><div class="tw" id="opp"></div></div></div>
+
 <script>
 var S={parties:[],cands:[],actions:[],history:[]},KEY='election-framework-v1',MAX=8;
 try{var l=localStorage.getItem(KEY);if(l)S=JSON.parse(l)}catch(e){}
@@ -67,7 +70,21 @@ var ROLES=['Finance Minister','Foreign Affairs Minister','Arts Minister','Police
 document.getElementById('roles').innerHTML=['Mayor','Former Mayor'].concat(ROLES,ROLES.map(function(r){return'Opposition '+r})).map(function(r){return'<option>'+esc(r)+'</option>'}).join('');
 function party(id){return S.parties.find(function(p){return p.id==id})}
 function members(pid){return S.cands.filter(function(c){return c.status=='active'&&c.partyId==pid})}
-function tab(n){$('v1').classList.toggle('hide',n!=1);$('v2').classList.toggle('hide',n!=2);$('t1').classList.toggle('on',n==1);$('t2').classList.toggle('on',n==2)}
+function tab(n){for(var i=1;i<=3;i++){$('v'+i).classList.toggle('hide',n!=i);$('t'+i).classList.toggle('on',n==i)}}
+function exportData(){try{var b=new Blob([JSON.stringify(S)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='election-backup-'+today()+'.json';document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove()},500)}catch(e){alert('Export failed: '+e.message)}}
+function importData(inp){var f=inp.files&&inp.files[0];if(!f)return;var r=new FileReader();r.onload=function(){try{var d=JSON.parse(r.result);if(!d||!Array.isArray(d.parties)||!Array.isArray(d.cands))throw new Error('This does not look like an election backup.');
+ if(!confirm('Replace everything on this page with the backup ('+d.parties.length+' parties, '+d.cands.length+' candidates)?'))return;
+ S=Object.assign({parties:[],cands:[],actions:[],history:[]},d);save()}catch(e){alert('Import failed: '+e.message)}inp.value=''};r.readAsText(f)}
+function opp(c){var f=portfolio(c);if(!f||!c.partyId)return'';var o=S.cands.filter(function(x){return x.status=='active'&&x.id!=c.id&&x.partyId&&x.partyId!=c.partyId&&portfolio(x)==f}).map(function(x){var p=party(x.partyId);return esc(x.name)+' ('+esc(p?p.name:'?')+')'});return o.length?'<br><small class="mut">⚔ Opposite number: '+o.join(', ')+'</small>':''}
+function oppView(){var ps=S.parties;if(!ps.length)return'<span class="mut">Add parties first.</span>';
+ var act=S.cands.filter(function(c){return c.status=='active'}),gov=act.find(function(c){return c.primary=='Mayor'}),govP=gov?gov.partyId:null,gp=gov?party(gov.partyId):null;
+ var top='<p>'+(gov?'Mayor: <b>'+esc(gov.name)+'</b>'+(gp?' ('+esc(gp.name)+')':''):'<span class="mut">No Mayor yet. Run an election to set the Government.</span>')+'</p>';
+ var head='<tr><th>Portfolio</th>'+ps.map(function(p){return'<th style="border-bottom:3px solid '+esc(p.color)+'">'+esc(p.name)+'<br><small class="'+(govP&&p.id==govP?'g':'mut')+'">'+(govP?(p.id==govP?'Government':'Opposition'):'')+'</small></th>'}).join('')+'</tr>';
+ var rows=ROLES.filter(function(r){return act.some(function(c){return portfolio(c)==r})});
+ var body=rows.map(function(r){return'<tr><td><b>'+esc(r)+'</b></td>'+ps.map(function(p){var h=act.filter(function(c){return c.partyId==p.id&&portfolio(c)==r});return'<td>'+(h.map(function(c){return esc(c.name)+(c.primary=='Mayor'?' <span class="badge">Mayor</span>':'')}).join('<br>')||'<span class="mut">—</span>')+'</td>'}).join('')+'</tr>'}).join('');
+ var oth=act.filter(function(c){return !portfolio(c)&&c.partyId});
+ if(oth.length)body+='<tr><td><b>Other roles</b></td>'+ps.map(function(p){return'<td>'+(oth.filter(function(c){return c.partyId==p.id}).map(function(c){return esc(c.name)+' <small class="mut">('+esc(c.primary||'no role')+(c.secondary?' / '+esc(c.secondary):'')+')</small>'}).join('<br>')||'<span class="mut">—</span>')+'</td>'}).join('')+'</tr>';
+ return top+(body?'<table>'+head+body+'</table>':'<span class="mut">No portfolio roles assigned yet.</span>')}
 
 function addParty(){var n=$('pn').value.trim();if(!n)return;S.parties.push({id:uid(),name:n,color:$('pc').value});$('pn').value='';save()}
 function delParty(id){var p=party(id);if(!confirm('Remove "'+p.name+'"? Its active members become unassigned.'))return;
@@ -82,7 +99,7 @@ function rmCand(id){var c=S.cands.find(function(x){return x.id==id});c.status='r
 function assign(id){var pid=$('as'+id).value;if(!pid)return;if(members(pid).length>=MAX){alert('Party is full.');return}S.cands.find(function(x){return x.id==id}).partyId=pid;save()}
 
 function readPhoto(inp,cb){var f=inp&&inp.files&&inp.files[0];if(!f)return cb(null);var r=new FileReader();r.onload=function(){var im=new Image();im.onload=function(){var s=120,cv=document.createElement('canvas');cv.width=cv.height=s;var m=Math.min(im.width,im.height);cv.getContext('2d').drawImage(im,(im.width-m)/2,(im.height-m)/2,m,m,0,0,s,s);cb(cv.toDataURL('image/jpeg',0.8))};im.onerror=function(){cb(null)};im.src=r.result};r.onerror=function(){cb(null)};r.readAsDataURL(f)}
-function av(c){return c.photo?'<img class="av" alt="" src="'+c.photo+'">':'<span class="av">'+esc((c.name||'?').charAt(0).toUpperCase())+'</span>'}
+function av(c){return c.photo?'<img class="av" alt="" src="'+esc(c.photo)+'">':'<span class="av">'+esc((c.name||'?').charAt(0).toUpperCase())+'</span>'}
 function setVoters(){S.eligible=Math.max(0,parseInt($('ev').value)||0);save()}
 function today(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
 function fee(pid){S.fees=S.fees||{};return S.fees[pid]||(S.fees[pid]={paid:false,amount:null,date:today()})}
@@ -100,12 +117,12 @@ function saveEdit(id){var c=S.cands.find(function(x){return x.id==id});
 function memberRow(c,assignable){
  if(editing==c.id){
   return'<div class="m"><div class="row" style="width:100%;margin:0"><input id="en_'+c.id+'" value="'+esc(c.name)+'"><input id="e1_'+c.id+'" list="roles" value="'+esc(c.primary)+'" placeholder="Primary role"><input id="e2_'+c.id+'" list="roles" value="'+esc(c.secondary)+'" placeholder="Secondary role"><input id="enote_'+c.id+'" value="'+esc(c.notes)+'" placeholder="Notes (e.g. Former Mayor)"><select id="ep_'+c.id+'"><option value="">Unassigned</option>'+S.parties.map(function(p){return'<option value="'+p.id+'"'+(p.id==c.partyId?' selected':'')+'>'+esc(p.name)+'</option>'}).join('')+'</select><input type="file" id="ef_'+c.id+'" accept="image/*" title="New photo"><button class="p" onclick="saveEdit(\''+c.id+'\')">Save</button><button onclick="edit(null)">Cancel</button></div></div>'}
- var h='<div class="m"><div style="display:flex;gap:8px;align-items:center">'+av(c)+'<div><b>'+esc(c.name)+'</b><br><small>'+esc(c.primary||'—')+(c.secondary?' / '+esc(c.secondary):'')+'</small>'+(c.log&&c.log.length?'<br><small class="mut">'+c.log.slice(-3).map(esc).join(' · ')+'</small>':'')+(c.notes?'<br><small class="mut">📝 '+esc(c.notes)+'</small>':'')+'</div></div><div class="row" style="margin:0">';
+ var h='<div class="m"><div style="display:flex;gap:8px;align-items:center">'+av(c)+'<div><b>'+esc(c.name)+'</b><br><small>'+esc(c.primary||'—')+(c.secondary?' / '+esc(c.secondary):'')+'</small>'+(c.log&&c.log.length?'<br><small class="mut">'+c.log.slice(-3).map(esc).join(' · ')+'</small>':'')+(c.notes?'<br><small class="mut">📝 '+esc(c.notes)+'</small>':'')+opp(c)+'</div></div><div class="row" style="margin:0">';
  if(assignable){h+='<select id="as'+c.id+'">'+S.parties.map(function(p){return'<option value="'+p.id+'">'+esc(p.name)+'</option>'}).join('')+'</select><button onclick="assign(\''+c.id+'\')">Assign</button>'}
  return h+'<button onclick="edit(\''+c.id+'\')">Edit</button><select id="r'+c.id+'"><option>Death</option><option>Resigned</option><option>Retired</option></select><button class="d" onclick="rmCand(\''+c.id+'\')">Remove</button></div></div>'}
 
 function render(){
- $('ev').value=S.eligible||'';
+ $('ev').value=S.eligible||'';$('opp').innerHTML=oppView();
  $('fees').innerHTML=S.parties.length?S.parties.map(function(p){var f=fee(p.id);return'<div class="m"><div><b style="color:'+esc(p.color)+'">'+esc(p.name)+'</b>'+(members(p.id).length<MAX?' <small class="b">Not eligible: '+members(p.id).length+'/'+MAX+' members</small>':'')+'</div><div class="row" style="margin:0"><label><input type="checkbox" style="flex:none"'+(f.paid?' checked':'')+' onchange="setFee(\''+p.id+'\',\'paid\',this.checked)"> Paid</label><input type="number" min="0" step="any" placeholder="Fee amount" style="flex:0 1 120px" value="'+(f.amount==null?'':f.amount)+'" onchange="setFee(\''+p.id+'\',\'amount\',this.value)"><input type="date" style="flex:0 1 150px" value="'+esc(f.date)+'" onchange="setFee(\''+p.id+'\',\'date\',this.value)"></div></div>'}).join(''):'<span class="mut">Add parties first.</span>';
  var opts=S.parties.map(function(p){return'<option value="'+p.id+'">'+esc(p.name)+' ('+members(p.id).length+'/'+MAX+')</option>'}).join('');
  var cur=$('cp').value;$('cp').innerHTML='<option value="">Unassigned</option>'+opts;$('cp').value=cur;
