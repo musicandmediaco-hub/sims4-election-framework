@@ -25,7 +25,7 @@ button.d{color:var(--bad)}input[type=color]{flex:0 0 44px;padding:2px;height:34p
 </style></head><body>
 <h1>Election Framework</h1>
 <div class="row"><button onclick="exportData()">⬇ Export backup</button><button onclick="$('imp').click()">⬆ Import backup</button><input type="file" id="imp" accept=".json,application/json" class="hide" onchange="importData(this)"><span class="mut">Back up regularly — data is stored in this browser only.</span></div>
-<div class="tabs"><button class="t on" id="t1" onclick="tab(1)">Parties &amp; Candidates</button><button class="t" id="t2" onclick="tab(2)">Election</button><button class="t" id="t3" onclick="tab(3)">Government &amp; Opposition</button></div>
+<div class="tabs"><button class="t on" id="t1" onclick="tab(1)">Parties &amp; Candidates</button><button class="t" id="t2" onclick="tab(2)">Election</button><button class="t" id="t3" onclick="tab(3)">Government &amp; Opposition</button><button class="t" id="t4" onclick="tab(4)">Parliament</button></div>
 
 <div id="v1">
  <div class="card"><h2>Add party</h2><div class="row"><input id="pn" placeholder="Party name"><input type="color" id="pc" value="#3b5bdb"><button class="p" onclick="addParty()">Add party</button></div></div>
@@ -59,6 +59,8 @@ button.d{color:var(--bad)}input[type=color]{flex:0 0 44px;padding:2px;height:34p
 
 <div id="v3" class="hide"><div class="card"><h2>Government &amp; Opposition</h2><div class="mut" style="margin-bottom:8px">Each row is a portfolio. Read across to see who holds it in every party. The party of the current Mayor is the Government, the runner-up at the last election is the Opposition, and any other party is on the Crossbench. Parties show as Undecided until an election has been run.</div><div class="tw" id="opp"></div></div></div>
 
+<div id="v4" class="hide"><div class="card"><h2>Parliament</h2><div class="mut" style="margin-bottom:8px">Each party wins 1 seat per 10 votes (maximum 8). Its top vote-getters take the Senate seats (up to 4) automatically. Any remaining seats are House seats, and the party chooses which of its other members fill them. Everyone else is Unseated and stays in the party until released to the Unassigned pool.</div><div id="parl"></div></div></div>
+
 <script>
 var S={parties:[],cands:[],actions:[],history:[]},KEY='election-framework-v1',MAX=8;
 try{var l=localStorage.getItem(KEY);if(l)S=JSON.parse(l)}catch(e){}
@@ -70,7 +72,7 @@ var ROLES=['Finance Minister','Foreign Affairs Minister','Arts Minister','Police
 document.getElementById('roles').innerHTML=['Mayor','Former Mayor'].concat(ROLES,ROLES.map(function(r){return'Opposition '+r})).map(function(r){return'<option>'+esc(r)+'</option>'}).join('');
 function party(id){return S.parties.find(function(p){return p.id==id})}
 function members(pid){return S.cands.filter(function(c){return c.status=='active'&&c.partyId==pid})}
-function tab(n){for(var i=1;i<=3;i++){$('v'+i).classList.toggle('hide',n!=i);$('t'+i).classList.toggle('on',n==i)}}
+function tab(n){for(var i=1;i<=4;i++){$('v'+i).classList.toggle('hide',n!=i);$('t'+i).classList.toggle('on',n==i)}}
 function exportData(){try{var b=new Blob([JSON.stringify(S)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='election-backup-'+today()+'.json';document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove()},500)}catch(e){alert('Export failed: '+e.message)}}
 function importData(inp){var f=inp.files&&inp.files[0];if(!f)return;var r=new FileReader();r.onload=function(){try{var d=JSON.parse(r.result);if(!d||!Array.isArray(d.parties)||!Array.isArray(d.cands))throw new Error('This does not look like an election backup.');
  if(!confirm('Replace everything on this page with the backup ('+d.parties.length+' parties, '+d.cands.length+' candidates)?'))return;
@@ -79,6 +81,28 @@ function swapRoles(id){var c=S.cands.find(function(x){return x.id==id});if(!c||!
 function swapParty(pid){var m=members(pid).filter(function(c){return c.secondary});if(!m.length){alert('No members of this party have a secondary role to swap.');return}
  if(!confirm('Swap primary and secondary roles for '+m.length+' member(s) of '+party(pid).name+'?'))return;var d=new Date().toLocaleDateString();m.forEach(function(c){setRoles(c,c.secondary,c.primary||'',d)});save()}
 function opp(c){var f=portfolio(c);if(!f||!c.partyId)return'';var o=S.cands.filter(function(x){return x.status=='active'&&x.id!=c.id&&x.partyId&&x.partyId!=c.partyId&&portfolio(x)==f}).map(function(x){var p=party(x.partyId);return esc(x.name)+' ('+esc(p?p.name:'?')+')'});return o.length?'<br><small class="mut">⚔ Opposite number: '+o.join(', ')+'</small>':''}
+function seatBadge(c){return c.seat?' <span class="badge '+(c.seat=='Senate'?'g':'mut')+'">'+c.seat+(c.votes!=null?' · '+c.votes+' votes':'')+'</span>':''}
+function chSum(c,b){if(!c)return'';var f=function(o){return Object.keys(o).map(function(k){return esc(k)+' '+o[k]}).join(', ')};var t='Senate: '+f(c.sen)+' · House seats to fill: '+f(c.hou)+(b&&Object.keys(c.hou).some(function(k){return c.hou[k]>0})?' (choose House members on the Parliament tab)':'');return b?'<p class="mut" style="margin:6px 0 0">'+t+'</p>':'<br><small class="mut">'+t+'</small>'}
+function releaseCand(id){var c=S.cands.find(function(x){return x.id==id});if(!c||!c.partyId)return;var p=party(c.partyId);
+ if(!confirm('Release '+c.name+' from '+(p?p.name:'their party')+'? They move to the Unassigned pool and the party needs a replacement to get back to 8 members.'))return;
+ (c.log=c.log||[]).push(new Date().toLocaleDateString()+' Released from '+(p?p.name:'party'));c.partyId=null;c.seat=null;c.votes=null;save()}
+function pickHouse(pid){var p=party(pid),ids=[].slice.call(document.querySelectorAll('.hp')).filter(function(x){return x.dataset.p==pid&&x.checked}).map(function(x){return x.value});
+ if(ids.length!=p.hs.n){alert('Choose exactly '+p.hs.n+' member(s) for '+p.name+'.');return}
+ S.cands.forEach(function(c){if(c.status=='active'&&c.partyId==pid&&c.seat!='Senate')c.seat=ids.indexOf(c.id)>=0?'House':'Unseated'});p.hs.done=true;save()}
+function repick(pid){var p=party(pid);S.cands.forEach(function(c){if(c.status=='active'&&c.partyId==pid&&c.seat!='Senate'&&c.votes!=null)c.seat=null});p.hs.done=false;save()}
+function parlView(){var act=S.cands.filter(function(c){return c.status=='active'});
+ if(!S.parties.some(function(p){return p.hs}))return'<span class="mut">No seats yet. Run an election to fill the Senate and the House.</span>';
+ var h='';
+ S.parties.filter(function(p){return p.hs&&p.hs.n>0&&!p.hs.done}).forEach(function(p){
+  var cs=act.filter(function(c){return c.partyId==p.id&&c.seat!='Senate'&&c.votes!=null}).sort(function(a,b){return(b.votes||0)-(a.votes||0)});
+  h+='<div class="card" style="border-left:6px solid '+esc(p.color)+'"><b>'+esc(p.name)+'</b>: choose '+p.hs.n+' member(s) for the House of Representatives<div class="mut">The others become Unseated and stay in the party.</div>'
+   +cs.map(function(c){return'<label class="m" style="justify-content:flex-start;gap:8px"><input type="checkbox" class="hp" data-p="'+p.id+'" value="'+c.id+'" style="flex:none"> '+esc(c.name)+' <small class="mut">('+esc(c.primary||'—')+' · '+(c.votes!=null?c.votes:0)+' votes)</small></label>'}).join('')
+   +'<button class="p" style="margin-top:6px" onclick="pickHouse(\''+p.id+'\')">Confirm House members</button></div>'});
+ function box(title,ch){var m=act.filter(function(c){return c.seat==ch}).sort(function(a,b){return(b.votes||0)-(a.votes||0)});
+  var cnt=S.parties.map(function(p){var n=m.filter(function(c){return c.partyId==p.id}).length;return n?'<span style="color:'+esc(p.color)+'"><b>'+esc(p.name)+'</b></span> '+n:''}).filter(Boolean).join(' · ');
+  return'<h3>'+title+' ('+m.length+')'+(cnt?' — '+cnt:'')+'</h3>'+(m.length?'<div class="tw"><table><tr><th></th><th>Name</th><th>Party</th><th>Roles</th><th>Votes</th></tr>'+m.map(function(c){var p=party(c.partyId);return'<tr><td>'+av(c)+'</td><td>'+esc(c.name)+(c.primary=='Mayor'?' <span class="badge">Mayor</span>':'')+'</td><td>'+esc(p?p.name:'—')+'</td><td>'+esc(c.primary||'—')+(c.secondary?' / '+esc(c.secondary):'')+'</td><td>'+(c.votes!=null?c.votes:'')+'</td></tr>'}).join('')+'</table></div>':'<span class="mut">Empty.</span>')}
+ var rp=S.parties.filter(function(p){return p.hs&&p.hs.n>0&&p.hs.done}).map(function(p){return'<button onclick="repick(\''+p.id+'\')">Change '+esc(p.name)+' House picks</button>'}).join(' ');
+ return h+box('Senate (upper house)','Senate')+box('House of Representatives (lower house)','House')+(rp?'<div class="row" style="margin-top:6px">'+rp+'</div>':'')+box('Unseated (still in their party)','Unseated')}
 function pstat(p,govP){if(!govP)return'';if(p.id==govP)return'Government';if(!S.oppId||!party(S.oppId))return'Undecided';return p.id==S.oppId?'Opposition':'Crossbench'}
 function stBadge(t){if(!t)return'';var k={Government:'g',Opposition:'b',Crossbench:'mut',Undecided:'mut'}[t];return'<span class="badge '+k+'">'+t+'</span>'}
 function oppView(){var ps=S.parties;if(!ps.length)return'<span class="mut">Add parties first.</span>';
@@ -94,15 +118,15 @@ function oppView(){var ps=S.parties;if(!ps.length)return'<span class="mut">Add p
 
 function addParty(){var n=$('pn').value.trim();if(!n)return;S.parties.push({id:uid(),name:n,color:$('pc').value});$('pn').value='';save()}
 function delParty(id){var p=party(id);if(!confirm('Remove "'+p.name+'"? Its active members become unassigned.'))return;
- S.cands.forEach(function(c){if(c.partyId==id&&c.status=='active')c.partyId=null});
+ S.cands.forEach(function(c){if(c.partyId==id&&c.status=='active'){c.partyId=null;c.seat=null;c.votes=null}});
  S.parties=S.parties.filter(function(x){return x.id!=id});S.actions=S.actions.filter(function(a){return a.partyId!=id});save()}
 function addCand(){var n=$('cn').value.trim(),pid=$('cp').value;if(!n)return;
  if(pid&&members(pid).length>=MAX){alert('That party already has '+MAX+' members. Remove one first.');return}
  var q1=$('c1').value.trim(),q2=$('c2').value.trim();
- readPhoto($('cf'),function(ph){S.cands.push({id:uid(),name:n,partyId:pid||null,primary:q1,secondary:q2,status:'active',photo:ph});
+ readPhoto($('cf'),function(ph){S.cands.push({id:uid(),name:n,partyId:pid||null,primary:q1,secondary:q2,status:'active',photo:ph,seat:(pid&&party(pid)&&party(pid).hs)?'Unseated':null});
  ['cn','c1','c2','cf'].forEach(function(i){$(i).value=''});save()})}
 function rmCand(id){var c=S.cands.find(function(x){return x.id==id});c.status='removed';c.reason=$('r'+id).value;c.date=new Date().toLocaleDateString();c.formerParty=c.partyId;save()}
-function assign(id){var pid=$('as'+id).value;if(!pid)return;if(members(pid).length>=MAX){alert('Party is full.');return}S.cands.find(function(x){return x.id==id}).partyId=pid;save()}
+function assign(id){var pid=$('as'+id).value;if(!pid)return;if(members(pid).length>=MAX){alert('Party is full.');return}var cc=S.cands.find(function(x){return x.id==id});cc.partyId=pid;cc.seat=(party(pid)&&party(pid).hs)?'Unseated':null;cc.votes=null;save()}
 
 function readPhoto(inp,cb){var f=inp&&inp.files&&inp.files[0];if(!f)return cb(null);var r=new FileReader();r.onload=function(){var im=new Image();im.onload=function(){var s=120,cv=document.createElement('canvas');cv.width=cv.height=s;var m=Math.min(im.width,im.height);cv.getContext('2d').drawImage(im,(im.width-m)/2,(im.height-m)/2,m,m,0,0,s,s);cb(cv.toDataURL('image/jpeg',0.8))};im.onerror=function(){cb(null)};im.src=r.result};r.onerror=function(){cb(null)};r.readAsDataURL(f)}
 function av(c){return c.photo?'<img class="av" alt="" src="'+esc(c.photo)+'">':'<span class="av">'+esc((c.name||'?').charAt(0).toUpperCase())+'</span>'}
@@ -119,16 +143,16 @@ function saveEdit(id){var c=S.cands.find(function(x){return x.id==id});
  if(p1!=(c.primary||''))L.push(d+' Primary: '+(c.primary||'none')+' → '+(p1||'none'));
  if(p2!=(c.secondary||''))L.push(d+' Secondary: '+(c.secondary||'none')+' → '+(p2||'none'));
  if(pid!=c.partyId){var o=party(c.partyId),w=party(pid);L.push(d+' Party: '+(o?o.name:'none')+' → '+(w?w.name:'none'))}
- readPhoto($('ef_'+id),function(ph){c.name=n;c.primary=p1;c.secondary=p2;c.partyId=pid;c.notes=$('enote_'+id).value.trim();if(ph)c.photo=ph;editing=null;save()})}
+ readPhoto($('ef_'+id),function(ph){if(pid!=c.partyId){c.seat=(pid&&party(pid)&&party(pid).hs)?'Unseated':null;c.votes=null}c.name=n;c.primary=p1;c.secondary=p2;c.partyId=pid;c.notes=$('enote_'+id).value.trim();if(ph)c.photo=ph;editing=null;save()})}
 function memberRow(c,assignable){
  if(editing==c.id){
   return'<div class="m"><div class="row" style="width:100%;margin:0"><input id="en_'+c.id+'" value="'+esc(c.name)+'"><input id="e1_'+c.id+'" list="roles" value="'+esc(c.primary)+'" placeholder="Primary role"><input id="e2_'+c.id+'" list="roles" value="'+esc(c.secondary)+'" placeholder="Secondary role"><input id="enote_'+c.id+'" value="'+esc(c.notes)+'" placeholder="Notes (e.g. Former Mayor)"><select id="ep_'+c.id+'"><option value="">Unassigned</option>'+S.parties.map(function(p){return'<option value="'+p.id+'"'+(p.id==c.partyId?' selected':'')+'>'+esc(p.name)+'</option>'}).join('')+'</select><input type="file" id="ef_'+c.id+'" accept="image/*" title="New photo"><button class="p" onclick="saveEdit(\''+c.id+'\')">Save</button><button onclick="edit(null)">Cancel</button></div></div>'}
- var h='<div class="m"><div style="display:flex;gap:8px;align-items:center">'+av(c)+'<div><b>'+esc(c.name)+'</b><br><small>'+esc(c.primary||'—')+(c.secondary?' / '+esc(c.secondary):'')+'</small>'+(c.log&&c.log.length?'<br><small class="mut">'+c.log.slice(-3).map(esc).join(' · ')+'</small>':'')+(c.notes?'<br><small class="mut">📝 '+esc(c.notes)+'</small>':'')+opp(c)+'</div></div><div class="row" style="margin:0">';
+ var h='<div class="m"><div style="display:flex;gap:8px;align-items:center">'+av(c)+'<div><b>'+esc(c.name)+'</b>'+seatBadge(c)+'<br><small>'+esc(c.primary||'—')+(c.secondary?' / '+esc(c.secondary):'')+'</small>'+(c.log&&c.log.length?'<br><small class="mut">'+c.log.slice(-3).map(esc).join(' · ')+'</small>':'')+(c.notes?'<br><small class="mut">📝 '+esc(c.notes)+'</small>':'')+opp(c)+'</div></div><div class="row" style="margin:0">';
  if(assignable){h+='<select id="as'+c.id+'">'+S.parties.map(function(p){return'<option value="'+p.id+'">'+esc(p.name)+'</option>'}).join('')+'</select><button onclick="assign(\''+c.id+'\')">Assign</button>'}
- return h+(c.secondary?'<button onclick="swapRoles(\''+c.id+'\')" title="Swap primary and secondary roles">⇄ Swap</button>':'')+'<button onclick="edit(\''+c.id+'\')">Edit</button><select id="r'+c.id+'"><option>Death</option><option>Resigned</option><option>Retired</option></select><button class="d" onclick="rmCand(\''+c.id+'\')">Remove</button></div></div>'}
+ return h+(c.secondary?'<button onclick="swapRoles(\''+c.id+'\')" title="Swap primary and secondary roles">⇄ Swap</button>':'')+'<button onclick="edit(\''+c.id+'\')">Edit</button>'+(c.partyId?'<button onclick="releaseCand(\''+c.id+'\')" title="Move to the Unassigned pool">Release</button>':'')+'<select id="r'+c.id+'"><option>Death</option><option>Resigned</option><option>Retired</option></select><button class="d" onclick="rmCand(\''+c.id+'\')">Remove</button></div></div>'}
 
 function render(){
- $('ev').value=S.eligible||'';$('opp').innerHTML=oppView();
+ $('ev').value=S.eligible||'';$('opp').innerHTML=oppView();$('parl').innerHTML=parlView();
  $('fees').innerHTML=S.parties.length?S.parties.map(function(p){var f=fee(p.id);return'<div class="m"><div><b style="color:'+esc(p.color)+'">'+esc(p.name)+'</b>'+(members(p.id).length<MAX?' <small class="b">Not eligible: '+members(p.id).length+'/'+MAX+' members</small>':'')+'</div><div class="row" style="margin:0"><label><input type="checkbox" style="flex:none"'+(f.paid?' checked':'')+' onchange="setFee(\''+p.id+'\',\'paid\',this.checked)"> Paid</label><input type="number" min="0" step="any" placeholder="Fee amount" style="flex:0 1 120px" value="'+(f.amount==null?'':f.amount)+'" onchange="setFee(\''+p.id+'\',\'amount\',this.value)"><input type="date" style="flex:0 1 150px" value="'+esc(f.date)+'" onchange="setFee(\''+p.id+'\',\'date\',this.value)"></div></div>'}).join(''):'<span class="mut">Add parties first.</span>';
  var opts=S.parties.map(function(p){return'<option value="'+p.id+'">'+esc(p.name)+' ('+members(p.id).length+'/'+MAX+')</option>'}).join('');
  var cur=$('cp').value;$('cp').innerHTML='<option value="">Unassigned</option>'+opts;$('cp').value=cur;
@@ -143,7 +167,7 @@ function render(){
  var fo=S.cands.filter(function(c){return c.status=='removed'});
  $('former').innerHTML=fo.length?'<table><tr><th>Name</th><th>Party</th><th>Roles</th><th>Reason</th><th>Date</th></tr>'+fo.map(function(c){var p=party(c.formerParty);return'<tr><td>'+esc(c.name)+'</td><td>'+esc(p?p.name:'—')+'</td><td>'+esc(c.primary)+(c.secondary?' / '+esc(c.secondary):'')+'</td><td>'+esc(c.reason)+'</td><td>'+esc(c.date)+'</td></tr>'}).join('')+'</table>':'<span class="mut">None.</span>';
  $('alist').innerHTML=S.actions.map(function(a){var p=party(a.partyId);return'<div class="m"><div><b>'+esc(p?p.name:'?')+'</b>'+(a.candId?' ('+esc((S.cands.find(function(c){return c.id==a.candId})||{}).name||'?')+')':'')+': '+esc(a.desc)+'</div><div><span class="'+(a.effect>0?'g':'b')+'">'+(a.effect>0?'+ Gain':'− Lose')+' ×'+a.weight+'</span> <button class="d" onclick="delAction(\''+a.id+'\')">✕</button></div></div>'}).join('');
- $('hist').innerHTML=S.history.length?S.history.slice().reverse().map(function(h){return'<div class="m"><div><b>'+esc(h.name)+'</b> <small>'+esc(h.date)+'</small>'+(h.fees&&h.fees.length?'<br><small class="mut">Fees: '+h.fees.map(function(f){return esc(f.name)+' '+(f.amount==null?'(amount not set)':esc(f.amount))+' paid '+esc(f.date)}).join('; ')+'</small>':'')+'</div><div>Winner: <b>'+esc(h.winner)+'</b>'+(h.mayor?' · Mayor: <b>'+esc(h.mayor)+'</b>':'')+(h.hung?' · Mayor unchanged':'')+(h.opposition?' · Opposition: <b>'+esc(h.opposition)+'</b>':'')+' <small>('+h.results.map(function(r){return esc(r.name)+' '+r.share.toFixed(1)+'%'+(r.votes?' ('+r.votes.toLocaleString()+')':'')}).join(', ')+')</small></div></div>'}).join(''):'None yet.';
+ $('hist').innerHTML=S.history.length?S.history.slice().reverse().map(function(h){return'<div class="m"><div><b>'+esc(h.name)+'</b> <small>'+esc(h.date)+'</small>'+(h.fees&&h.fees.length?'<br><small class="mut">Fees: '+h.fees.map(function(f){return esc(f.name)+' '+(f.amount==null?'(amount not set)':esc(f.amount))+' paid '+esc(f.date)}).join('; ')+'</small>':'')+chSum(h.chambers)+'</div><div>Winner: <b>'+esc(h.winner)+'</b>'+(h.mayor?' · Mayor: <b>'+esc(h.mayor)+'</b>':'')+(h.hung?' · Mayor unchanged':'')+(h.opposition?' · Opposition: <b>'+esc(h.opposition)+'</b>':'')+' <small>('+h.results.map(function(r){return esc(r.name)+' '+r.share.toFixed(1)+'%'+(r.votes?' ('+r.votes.toLocaleString()+')':'')}).join(', ')+')</small></div></div>'}).join(''):'None yet.';
 }
 
 function addAction(){var d=$('ad').value.trim(),pid=$('ap').value;if(!d||!pid)return;
@@ -163,12 +187,12 @@ function runElection(){
  for(var i=0;i<N&&i<100000;i++){var a=pick(pw),b=pick(mem[a].map(function(m){return m.w}));balls.push([a,b]);pc[a]++;mc[a][b]++;if(pc[a]>=80){win=a;break}}
  var seatWin=win>=0;
  var mi=win>=0?mc[win].indexOf(Math.max.apply(null,mc[win])):-1;
- R={rs:rs,mem:mem,balls:balls,win:win,mi:mi,seatWin:seatWin,N:N,cp:cp,fpc:pc.slice(),done:false,name:$('en').value.trim()||'Election '+(S.history.length+1)};
+ R={rs:rs,mem:mem,balls:balls,win:win,mi:mi,seatWin:seatWin,N:N,cp:cp,fpc:pc.slice(),fmc:mc.map(function(a){return a.slice()}),done:false,name:$('en').value.trim()||'Election '+(S.history.length+1)};
  $('resCard').classList.remove('hide');playRace();
 }
 function playRace(){clearInterval(timer);R.i=0;R.pc=R.rs.map(function(){return 0});R.mc=R.mem.map(function(m){return m.map(function(){return 0})});
  $('rfin').innerHTML='';$('rctl').innerHTML='<button onclick="skipRace()">Skip ⏭</button>';drawRace();
- var step=Math.max(1,Math.ceil(R.balls.length/300)),iv=30000/Math.ceil(R.balls.length/step);
+ var step=Math.max(1,Math.ceil(R.balls.length/300)),iv=60000/Math.ceil(R.balls.length/step);
  timer=setInterval(function(){var e=Math.min(R.balls.length,R.i+step);for(;R.i<e;R.i++){var b=R.balls[R.i];R.pc[b[0]]++;R.mc[b[0]][b[1]]++}drawRace();if(R.i>=R.balls.length)finishRace()},iv)}
 function skipRace(){if(!R)return;for(;R.i<R.balls.length;R.i++){var b=R.balls[R.i];R.pc[b[0]]++;R.mc[b[0]][b[1]]++}drawRace();finishRace()}
 function drawRace(){$('race').innerHTML=R.rs.map(function(r,pi){var v=R.pc[pi],seats=Math.min(8,Math.floor(v/10)),bx='';
@@ -182,7 +206,7 @@ function finishRace(){clearInterval(timer);var hung=R.win<0,w=hung?null:R.rs[R.w
  var note=S.eligible>0?'':'<p class="mut">Eligible voters not set, so 500 sample ballots were used.</p>';
  var ob=(!hung&&R.oppId)?'<p class="mut" style="margin:6px 0 0">Official Opposition: <b>'+esc(party(R.oppId).name)+'</b>'+(function(){var x=R.rs.filter(function(r,i){return i!=R.win&&r.id!=R.oppId}).map(function(r){return esc(r.name)});return x.length?' · Crossbench: '+x.join(', '):''})()+'</p>':'';
  $('rfin').innerHTML=hung?'<div class="card" style="margin:8px 0 0"><p style="margin:0">🏛️ <b>Hung parliament</b></p><p class="mut">No party reached 8 seats, so nobody wins. The current Mayor stays in place until the next election.</p>'+note+'</div>'
- :'<div class="card" style="margin:8px 0 0"><p style="margin:0">🏆 Winner: <b style="color:'+esc(w.color)+'">'+esc(w.name)+'</b></p><div style="display:flex;gap:8px;align-items:center;margin-top:6px">'+av(mayor)+'<div>New Mayor: <b>'+esc(mayor.name)+'</b></div></div>'+ob+note+'</div>'}
+ :'<div class="card" style="margin:8px 0 0"><p style="margin:0">🏆 Winner: <b style="color:'+esc(w.color)+'">'+esc(w.name)+'</b></p><div style="display:flex;gap:8px;align-items:center;margin-top:6px">'+av(mayor)+'<div>New Mayor: <b>'+esc(mayor.name)+'</b></div></div>'+ob+chSum(R.seatSum,1)+note+'</div>'}
 function portfolio(c){var st=function(x){return(x||'').replace(/^Opposition /,'')},a=st(c.primary),b=st(c.secondary);return ROLES.indexOf(a)>=0?a:ROLES.indexOf(b)>=0?b:null}
 function setRoles(c,p,sc,d){var L=c.log=c.log||[];if((c.primary||'')!=p)L.push(d+' Primary: '+(c.primary||'none')+' → '+(p||'none'));if((c.secondary||'')!=sc)L.push(d+' Secondary: '+(c.secondary||'none')+' → '+(sc||'none'));c.primary=p;c.secondary=sc}
 function commitElection(w,mayor){var d=new Date().toLocaleDateString();
@@ -200,9 +224,16 @@ function commitElection(w,mayor){var d=new Date().toLocaleDateString();
    setRoles(c,pri,sec,d)});
   var ms=pf[mayor.id]||(/^Opposition /.test(mayor.secondary||'')?'':(mayor.secondary||''));
   setRoles(mayor,'Mayor',ms,d);
+  var sen={},hou={};
+  R.rs.forEach(function(r,pi){var pt=party(r.id);if(!pt)return;
+   var rk=R.mem[pi].map(function(m,mi){return{c:m.c,v:R.fmc[pi][mi]}}).sort(function(a,b){return b.v-a.v}),
+   seats=Math.min(8,Math.floor(R.fpc[pi]/10)),ns=Math.min(4,seats),nh=seats-ns;
+   rk.forEach(function(x,i){x.c.votes=x.v;x.c.seat=i<ns?'Senate':(nh==0?'Unseated':null)});
+   pt.hs={n:nh,done:nh==0};sen[r.name]=ns;hou[r.name]=nh});
+  R.seatSum={sen:sen,hou:hou};
  }
  var tot=R.fpc.reduce(function(s,v){return s+v},0)||1;
- S.history.push({name:R.name,date:d,winner:w?w.name:'Hung parliament',hung:!w,mayor:mayor?mayor.name:null,opposition:(w&&R.oppId&&party(R.oppId))?party(R.oppId).name:null,fees:R.cp.map(function(p){var f=fee(p.id);return{name:p.name,amount:f.amount,date:f.date}}),results:R.rs.map(function(r,i){return{name:r.name,share:R.fpc[i]/tot*100,votes:R.fpc[i]}}).sort(function(a,b){return b.votes-a.votes})});
+ S.history.push({name:R.name,date:d,winner:w?w.name:'Hung parliament',hung:!w,mayor:mayor?mayor.name:null,opposition:(w&&R.oppId&&party(R.oppId))?party(R.oppId).name:null,chambers:R.seatSum||null,fees:R.cp.map(function(p){var f=fee(p.id);return{name:p.name,amount:f.amount,date:f.date}}),results:R.rs.map(function(r,i){return{name:r.name,share:R.fpc[i]/tot*100,votes:R.fpc[i]}}).sort(function(a,b){return b.votes-a.votes})});
  S.actions=[];R.cp.forEach(function(p){var f=fee(p.id);f.paid=false;f.date=today()});$('en').value='';save()}
 render();
 </script></body></html>
