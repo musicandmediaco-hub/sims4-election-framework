@@ -20,22 +20,28 @@ button.d{color:var(--bad)}input[type=color]{flex:0 0 44px;padding:2px;height:34p
 .bar{height:18px;border-radius:4px;margin:2px 0}.g{color:var(--good)}.b{color:var(--bad)}
 .tw{overflow-x:auto}table{border-collapse:collapse;width:100%}td,th{text-align:left;padding:4px 8px;border-bottom:1px solid var(--bd)}
 .hide{display:none}
+.mo{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:50;padding:16px}.mo.hide{display:none}
+.mb{background:var(--card);color:var(--tx);border:1px solid var(--bd);border-radius:10px;padding:16px;max-width:440px;width:100%}.mb p{margin:0 0 12px}
+textarea{font:inherit;color:var(--tx);background:var(--card);border:1px solid var(--bd);border-radius:6px;padding:6px 8px;width:100%}
 .lane{padding:8px 0;border-top:1px solid var(--bd)}.seat{width:26px;height:26px;border:2px solid var(--bd);border-radius:6px;display:inline-block;margin:4px 4px 4px 0;transition:background .3s}
 .av{width:40px;height:40px;border-radius:50%;object-fit:cover;background:var(--bd);display:inline-flex;align-items:center;justify-content:center;flex:none;font-weight:600}
 </style></head><body>
 <h1>Election Framework</h1>
+<div id="err" class="hide" style="background:var(--bad);color:#fff;padding:8px 10px;border-radius:6px;margin-bottom:8px"></div>
+<div id="md" class="mo hide"><div class="mb"><p id="mdMsg"></p><div class="row" style="margin:0"><button class="p" id="mdOk" onclick="mdYes()">Confirm</button><button id="mdNo" onclick="mdNo()">Cancel</button></div></div></div>
 <div class="row"><button onclick="exportData()">⬇ Export backup</button><button onclick="$('imp').click()">⬆ Import backup</button><input type="file" id="imp" accept=".json,application/json" class="hide" onchange="importData(this)"><span class="mut">Back up regularly — data is stored in this browser only.</span></div>
-<div class="tabs"><button class="t on" id="t1" onclick="tab(1)">Parties &amp; Candidates</button><button class="t" id="t2" onclick="tab(2)">Election</button><button class="t" id="t3" onclick="tab(3)">Government &amp; Opposition</button><button class="t" id="t4" onclick="tab(4)">Parliament</button></div>
+<div class="tabs"><button class="t on" id="t1" onclick="tab(1)">Parties &amp; Candidates</button><button class="t" id="t2" onclick="tab(2)">Election</button><button class="t" id="t3" onclick="tab(3)">Government &amp; Opposition</button><button class="t" id="t4" onclick="tab(4)">Parliament</button><button class="t" id="t5" onclick="tab(5)">Pass the bill</button></div>
 
 <div id="v1">
  <div class="card"><h2>Add party</h2><div class="row"><input id="pn" placeholder="Party name"><input type="color" id="pc" value="#3b5bdb"><button class="p" onclick="addParty()">Add party</button></div></div>
  <div class="card"><h2>Add candidate</h2>
-  <div class="row"><input id="cn" placeholder="Name"><select id="cp"></select></div>
-  <div class="row"><input id="c1" list="roles" placeholder="Primary role"><input id="c2" list="roles" placeholder="Secondary role"><input type="file" id="cf" accept="image/*" title="Photo"><button class="p" onclick="addCand()">Add</button></div>
-  <datalist id="roles"></datalist>
+  <div class="row"><input id="cn" placeholder="Name"><select id="cp" onchange="render()"></select></div>
+  <div class="row"><input id="c1" list="dlp_new" placeholder="Primary role"><input id="c2" list="dls_new" placeholder="Secondary role"><input type="file" id="cf" accept="image/*" title="Photo"><button class="p" onclick="addCand()">Add</button></div>
+  <datalist id="roles"></datalist><datalist id="dlp_new"></datalist><datalist id="dls_new"></datalist>
  </div>
  <div class="grid" id="parties"></div>
  <div class="card hide" id="unCard"><h2>Unassigned candidates</h2><div id="un"></div></div>
+ <div class="card"><h2>Notices</h2><div id="notices"></div></div>
  <div class="card"><h2>Former candidates</h2><div class="tw" id="former"></div></div>
 </div>
 
@@ -61,6 +67,13 @@ button.d{color:var(--bad)}input[type=color]{flex:0 0 44px;padding:2px;height:34p
 
 <div id="v4" class="hide"><div class="card"><h2>Parliament</h2><div class="mut" style="margin-bottom:8px">Each party wins 1 seat per 10 votes (maximum 8). Its top vote-getters take the Senate seats (up to 4) automatically. Any remaining seats are House seats, and the party chooses which of its other members fill them. Everyone else is Unseated and stays in the party until released to the Unassigned pool.</div><div id="parl"></div></div></div>
 
+<div id="v5" class="hide"><div class="card"><h2>Pass the bill</h2>
+<div class="mut" style="margin-bottom:8px">A bill starts in the House of Representatives. If the House passes it, it goes to the Senate, which can pass it, reject it, or pass it with an amendment that sends it back to the House. A bill that passes both houses goes to the Mayor, who assents (it becomes law) or vetoes it. Only members holding a seat can vote, and the Mayor has the casting vote in a tie.</div>
+<div class="row"><input id="bt" placeholder="Bill title" maxlength="120"></div>
+<div class="row"><textarea id="bd" rows="3" placeholder="What does this bill do?"></textarea></div>
+<div class="row"><select id="bs" onchange="syncBp()"></select><select id="bp"></select><button class="p" onclick="addBill()">Introduce in the House</button></div></div>
+<div id="bills"></div></div>
+
 <script>
 var S={parties:[],cands:[],actions:[],history:[]},KEY='election-framework-v1',MAX=8;
 try{var l=localStorage.getItem(KEY);if(l)S=JSON.parse(l)}catch(e){}
@@ -68,25 +81,30 @@ function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}render
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
 function $(i){return document.getElementById(i)}
 function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6)}
+var MD_FN=null;
+function ask(msg,label,fn,single){$('mdMsg').innerHTML=esc(msg);$('mdOk').textContent=label||'OK';$('mdNo').classList.toggle('hide',!!single);MD_FN=fn||null;$('md').classList.remove('hide')}
+function mdYes(){var f=MD_FN;MD_FN=null;$('md').classList.add('hide');if(f)f()}
+function mdNo(){MD_FN=null;$('md').classList.add('hide')}
+function note(m){ask(String(m),'OK',null,true)}
+if(typeof window!=='undefined'){window.alert=note;window.addEventListener('error',function(e){var b=$('err');b.textContent='Something went wrong: '+(e.message||'unknown error')+'. Try refreshing, and export a backup if you can.';b.classList.remove('hide')})}
 var ROLES=['Finance Minister','Foreign Affairs Minister','Arts Minister','Police Minister','Health Minister','Travel Minister','Wellness Minister','Science Minister','Small Business','Environment','Communications','Entertainment','Education','Technology & Innovation','Public Happiness','Minister for Trade','Citizen Welfare Minister','Magical Affairs Spokesperson','Minister for Justice','Jobs & Industry Minister','Economic Sovereignty Minister','Minister for Sustainable Development','Energy and Resources Minister'];
 document.getElementById('roles').innerHTML=['Mayor','Former Mayor'].concat(ROLES,ROLES.map(function(r){return'Opposition '+r})).map(function(r){return'<option>'+esc(r)+'</option>'}).join('');
+document.getElementById('bp').innerHTML=['General'].concat(ROLES).map(function(r){return'<option>'+esc(r)+'</option>'}).join('');
 function party(id){return S.parties.find(function(p){return p.id==id})}
 function members(pid){return S.cands.filter(function(c){return c.status=='active'&&c.partyId==pid})}
-function tab(n){for(var i=1;i<=4;i++){$('v'+i).classList.toggle('hide',n!=i);$('t'+i).classList.toggle('on',n==i)}}
+function tab(n){for(var i=1;i<=5;i++){$('v'+i).classList.toggle('hide',n!=i);$('t'+i).classList.toggle('on',n==i)}}
 function exportData(){try{var b=new Blob([JSON.stringify(S)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='election-backup-'+today()+'.json';document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove()},500)}catch(e){alert('Export failed: '+e.message)}}
 function importData(inp){var f=inp.files&&inp.files[0];if(!f)return;var r=new FileReader();r.onload=function(){try{var d=JSON.parse(r.result);if(!d||!Array.isArray(d.parties)||!Array.isArray(d.cands))throw new Error('This does not look like an election backup.');
- if(!confirm('Replace everything on this page with the backup ('+d.parties.length+' parties, '+d.cands.length+' candidates)?'))return;
- S=Object.assign({parties:[],cands:[],actions:[],history:[]},d);save()}catch(e){alert('Import failed: '+e.message)}inp.value=''};r.readAsText(f)}
+ ask('Replace everything on this page with the backup ('+d.parties.length+' parties, '+d.cands.length+' candidates)?','Replace',function(){S=Object.assign({parties:[],cands:[],actions:[],history:[],notices:[]},d);save()})}catch(e){alert('Import failed: '+e.message)}inp.value=''};r.readAsText(f)}
 function swapRoles(id){var c=S.cands.find(function(x){return x.id==id});if(!c||!c.secondary)return;setRoles(c,c.secondary,c.primary||'',new Date().toLocaleDateString());save()}
 function swapParty(pid){var m=members(pid).filter(function(c){return c.secondary});if(!m.length){alert('No members of this party have a secondary role to swap.');return}
- if(!confirm('Swap primary and secondary roles for '+m.length+' member(s) of '+party(pid).name+'?'))return;var d=new Date().toLocaleDateString();m.forEach(function(c){setRoles(c,c.secondary,c.primary||'',d)});save()}
+ ask('Swap primary and secondary roles for '+m.length+' member(s) of '+party(pid).name+'?','Swap',function(){var d=new Date().toLocaleDateString();m.forEach(function(c){setRoles(c,c.secondary,c.primary||'',d)});save()})}
 function opp(c){var f=portfolio(c);if(!f||!c.partyId)return'';var o=S.cands.filter(function(x){return x.status=='active'&&x.id!=c.id&&x.partyId&&x.partyId!=c.partyId&&portfolio(x)==f}).map(function(x){var p=party(x.partyId);return esc(x.name)+' ('+esc(p?p.name:'?')+')'});return o.length?'<br><small class="mut">⚔ Opposite number: '+o.join(', ')+'</small>':''}
 function seatBadge(c){return c.seat?' <span class="badge '+(c.seat=='Senate'?'g':'mut')+'">'+c.seat+(c.votes!=null?' · '+c.votes+' votes':'')+'</span>':''}
 function chSum(c,b){if(!c)return'';var f=function(o){return Object.keys(o).map(function(k){return esc(k)+' '+o[k]}).join(', ')};var t='Senate: '+f(c.sen)+' · House seats to fill: '+f(c.hou)+(b&&Object.keys(c.hou).some(function(k){return c.hou[k]>0})?' (choose House members on the Parliament tab)':'');return b?'<p class="mut" style="margin:6px 0 0">'+t+'</p>':'<br><small class="mut">'+t+'</small>'}
-function delHist(i){var h=S.history[i];if(!h)return;if(!confirm('Remove the record of "'+h.name+'"? This only deletes the entry. Roles, seats and the Mayor are not changed back.'))return;S.history.splice(i,1);save()}
+function delHist(i){var h=S.history[i];if(!h)return;ask('Remove the record of "'+h.name+'"? This only deletes the entry. Roles, seats and the Mayor are not changed back.','Remove',function(){S.history.splice(i,1);save()})}
 function releaseCand(id){var c=S.cands.find(function(x){return x.id==id});if(!c||!c.partyId)return;var p=party(c.partyId);
- if(!confirm('Release '+c.name+' from '+(p?p.name:'their party')+'? They move to the Unassigned pool and the party needs a replacement to get back to 8 members.'))return;
- (c.log=c.log||[]).push(new Date().toLocaleDateString()+' Released from '+(p?p.name:'party'));c.partyId=null;c.seat=null;c.votes=null;save()}
+ ask('Release '+c.name+' from '+(p?p.name:'their party')+'? They move to the Unassigned pool and the party needs a replacement to get back to 8 members.','Release',function(){(c.log=c.log||[]).push(new Date().toLocaleDateString()+' Released from '+(p?p.name:'party'));c.partyId=null;c.seat=null;c.votes=null;save()})}
 function pickHouse(pid){var p=party(pid),ids=[].slice.call(document.querySelectorAll('.hp')).filter(function(x){return x.dataset.p==pid&&x.checked}).map(function(x){return x.value});
  if(ids.length!=p.hs.n){alert('Choose exactly '+p.hs.n+' member(s) for '+p.name+'.');return}
  S.cands.forEach(function(c){if(c.status=='active'&&c.partyId==pid&&c.seat!='Senate')c.seat=ids.indexOf(c.id)>=0?'House':'Unseated'});p.hs.done=true;save()}
@@ -104,6 +122,111 @@ function parlView(){var act=S.cands.filter(function(c){return c.status=='active'
   return'<h3>'+title+' ('+m.length+')'+(cnt?' — '+cnt:'')+'</h3>'+(m.length?'<div class="tw"><table><tr><th></th><th>Name</th><th>Party</th><th>Roles</th><th>Votes</th></tr>'+m.map(function(c){var p=party(c.partyId);return'<tr><td>'+av(c)+'</td><td>'+esc(c.name)+(c.primary=='Mayor'?' <span class="badge">Mayor</span>':'')+'</td><td>'+esc(p?p.name:'—')+'</td><td>'+esc(c.primary||'—')+(c.secondary?' / '+esc(c.secondary):'')+'</td><td>'+(c.votes!=null?c.votes:'')+'</td></tr>'}).join('')+'</table></div>':'<span class="mut">Empty.</span>')}
  var rp=S.parties.filter(function(p){return p.hs&&p.hs.n>0&&p.hs.done}).map(function(p){return'<button onclick="repick(\''+p.id+'\')">Change '+esc(p.name)+' House picks</button>'}).join(' ');
  return h+box('Senate (upper house)','Senate')+box('House of Representatives (lower house)','House')+(rp?'<div class="row" style="margin-top:6px">'+rp+'</div>':'')+box('Unseated (still in their party)','Unseated')}
+function bl(){return S.bills=S.bills||[]}
+function bill(id){return bl().find(function(x){return x.id==id})}
+function mayorC(){return S.cands.find(function(c){return c.status=='active'&&c.primary=='Mayor'})}
+function govId(){var g=mayorC();return g?g.partyId:null}
+function chOf(b){return b.stage=='Senate'?'Senate':'House'}
+function chMembers(ch){return S.cands.filter(function(c){return c.status=='active'&&c.seat==ch})}
+function defStance(b,pid){if(pid==b.partyId)return'For';var g=govId(),o=(S.oppId&&party(S.oppId))?S.oppId:null;if(!g)return'Against';
+ if(b.type=='Government')return pid==o?'Against':'Abstain';
+ if(b.type=='Opposition')return pid==g?'Against':'Abstain';
+ return(pid==g||pid==o)?'Against':'Abstain'}
+function initDraft(b){var ch=chOf(b),st={},vt={};S.parties.forEach(function(p){st[p.id]=defStance(b,p.id)});chMembers(ch).forEach(function(c){vt[c.id]=st[c.partyId]||'Abstain'});b.draft={ch:ch,stage:b.stage,stance:st,votes:vt,amend:(b.draft&&b.draft.amend)||''}}
+function selHtml(v,on){return'<select onchange="'+on+'">'+['For','Against','Abstain'].map(function(o){return'<option'+(o==v?' selected':'')+'>'+o+'</option>'}).join('')+'</select>'}
+function addBill(){var t=$('bt').value.trim(),d=$('bd').value.trim(),sid=$('bs').value;
+ if(!t){alert('Give the bill a title.');return}
+ if(!sid){alert('Choose a sponsor. Only members holding a Senate or House seat can sponsor a bill.');return}
+ var c=S.cands.find(function(x){return x.id==sid}),g=govId(),typ=!g?'Unclassified':c.partyId==g?'Government':(c.partyId==S.oppId?'Opposition':'Crossbench');
+ S.billNo=(S.billNo||0)+1;
+ bl().push({id:uid(),no:'Bill '+String(S.billNo).padStart(3,'0'),title:t,desc:d,sponsorId:sid,sponsor:c.name,partyId:c.partyId,type:typ,portfolio:$('bp').value,date:today(),stage:'House',record:[],amend:''});
+ $('bt').value='';$('bd').value='';save()}
+function delBill(id){var b=bill(id);if(!b)return;ask('Remove '+b.no+': '+b.title+'?','Remove',function(){S.bills=bl().filter(function(x){return x.id!=id});save()})}
+function setVote(id,cid,v){var b=bill(id);b.draft.votes[cid]=v;save()}
+function setStance(id,pid,v){var b=bill(id);b.draft.stance[pid]=v;chMembers(b.draft.ch).forEach(function(c){if(c.partyId==pid)b.draft.votes[c.id]=v});save()}
+function setAmend(id,v){bill(id).draft.amend=v;save()}
+function advance(b,stg,passed){
+ if(!passed){b.stage='Defeated';b.where=stg=='HouseAmend'?'House (amendment vote)':stg=='Senate'?'Senate':'House'}
+ else if(stg=='House')b.stage='Senate';
+ else if(stg=='Senate')b.stage=b.amend?'HouseAmend':'Mayor';
+ else b.stage='Mayor';
+ b.draft=null}
+function castVotes(id){var b=bill(id),d=b.draft,ch=d.ch,m=chMembers(ch);
+ if(!m.length){alert('No members hold '+ch+' seats yet.');return}
+ var f=0,a=0,x=0,cross=0,rec=[];
+ m.forEach(function(c){var v=d.votes[c.id]||'Abstain',pt=party(c.partyId),line=d.stance[c.partyId],cr=v!=line&&v!='Abstain'&&!!line&&line!='Abstain';
+  if(v=='For')f++;else if(v=='Against')a++;else x++;if(cr)cross++;rec.push({n:c.name,p:pt?pt.name:'—',v:v,x:cr})});
+ if(f+a==0){alert('At least one member must vote For or Against.');return}
+ var stg=b.stage;if(stg=='Senate'&&d.amend.trim())b.amend=d.amend.trim();
+ var r={stage:stg=='HouseAmend'?'House (amendment)':ch,date:today(),f:f,a:a,ab:x,cross:cross,votes:rec,result:f>a?'Passed':a>f?'Defeated':'Tied',cast:null};
+ b.record.push(r);
+ if(r.result=='Tied'){b.pendingStage=stg;b.stage='Tie'}else advance(b,stg,r.result=='Passed');
+ save()}
+function castingVote(id,v){var b=bill(id),r=b.record[b.record.length-1];r.cast=v;r.result=v=='For'?'Passed':'Defeated';advance(b,b.pendingStage,v=='For');save()}
+function mayorDecide(id,ok){var b=bill(id),my=mayorC();b.stage=ok?'Law':'Vetoed';b.decided=today();b.mayorName=my?my.name:'';save()}
+function billAction(id){var b=bill(id);S.actions.push({id:uid(),partyId:$('bap_'+id).value,candId:null,desc:'Law: '+b.title,effect:+$('bae_'+id).value,weight:+$('baw_'+id).value});save();alert('Added to the Election tab as an election action.')}
+function stageLabel(b){return{House:'In the House',Senate:'In the Senate',HouseAmend:'Back in the House: Senate amendment',Mayor:'Awaiting the Mayor',Tie:'Tied: Mayor casting vote',Law:'Law',Defeated:'Defeated'+(b.where?' ('+b.where+')':''),Vetoed:'Vetoed by the Mayor'}[b.stage]||b.stage}
+function votePanel(b){var ch=chOf(b),m=chMembers(ch);
+ if(!m.length)return'<p class="mut">No members hold '+ch+' seats yet. Run an election and choose the House members first.</p>';
+ var d=b.draft,h='<h3>'+(b.stage=='HouseAmend'?'House vote on the Senate amendment':ch+' vote')+'</h3>';
+ if(b.stage=='Senate')h+='<div class="row"><input placeholder="Optional: pass with an amendment (describe the change)" value="'+esc(d.amend)+'" onchange="setAmend(\''+b.id+'\',this.value)"></div>';
+ S.parties.forEach(function(p){var pm=m.filter(function(c){return c.partyId==p.id});if(!pm.length)return;
+  h+='<div class="card" style="margin:6px 0;border-left:6px solid '+esc(p.color)+'"><div class="row" style="justify-content:space-between;margin:0"><b>'+esc(p.name)+'</b><label>Party line '+selHtml(d.stance[p.id],'setStance(\''+b.id+'\',\''+p.id+'\',this.value)')+'</label></div>'
+   +pm.map(function(c){var v=d.votes[c.id]||'Abstain',line=d.stance[p.id],x=v!=line&&v!='Abstain'&&line!='Abstain';return'<div class="m"><span>'+esc(c.name)+' <small class="mut">'+esc(c.primary||'')+'</small>'+(x?' <span class="badge b">crossing the floor</span>':'')+'</span>'+selHtml(v,'setVote(\''+b.id+'\',\''+c.id+'\',this.value)')+'</div>'}).join('')+'</div>'});
+ return h+'<div class="row"><button class="p" onclick="castVotes(\''+b.id+'\')">Cast votes</button></div>'}
+function recordHtml(b){if(!b.record||!b.record.length)return'';
+ return'<details style="margin-top:6px"><summary>Voting record</summary>'+b.record.map(function(r){return'<h3>'+esc(r.stage)+': '+r.f+' For, '+r.a+' Against, '+r.ab+' Abstain — '+esc(r.result)+(r.cast?' (Mayor casting vote: '+esc(r.cast)+')':'')+(r.cross?' · '+r.cross+' crossed the floor':'')+'</h3><div class="tw"><table><tr><th>Member</th><th>Party</th><th>Vote</th></tr>'+r.votes.map(function(v){return'<tr><td>'+esc(v.n)+'</td><td>'+esc(v.p)+'</td><td>'+esc(v.v)+(v.x?' <span class="badge b">crossed the floor</span>':'')+'</td></tr>'}).join('')+'</table></div>'}).join('')+'</details>'}
+function lawTools(b){var po=S.parties.map(function(p){return'<option value="'+p.id+'"'+(p.id==b.partyId?' selected':'')+'>'+esc(p.name)+'</option>'}).join('');
+ return'<div class="row"><span class="mut">Election effect:</span><select id="bap_'+b.id+'">'+po+'</select><select id="bae_'+b.id+'"><option value="1">Gain votes</option><option value="-1">Lose votes</option></select><select id="baw_'+b.id+'"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option></select><button onclick="billAction(\''+b.id+'\')">Add as election action</button></div>'}
+function billCard(b){var p=party(b.partyId),my=mayorC(),ST=['House','Senate','HouseAmend'];
+ var h='<div class="card" style="margin:8px 0"><div class="row" style="justify-content:space-between;margin:0"><b>'+esc(b.no)+': '+esc(b.title)+'</b><span class="badge '+(b.stage=='Law'?'g':(b.stage=='Defeated'||b.stage=='Vetoed'?'b':'mut'))+'">'+esc(stageLabel(b))+'</span></div>'
+ +'<div class="mut">'+esc(b.type)+' bill · '+esc(b.portfolio||'General')+' · Sponsor: '+esc(b.sponsor)+(p?' ('+esc(p.name)+')':'')+' · Introduced '+esc(b.date)+'</div>'
+ +(b.desc?'<p style="margin:6px 0">'+esc(b.desc)+'</p>':'')
+ +(b.amend?'<p class="mut" style="margin:6px 0">Senate amendment: '+esc(b.amend)+'</p>':'')
+ +(b.record.length?'<div class="mut">'+b.record.map(function(r){return esc(r.stage)+' '+r.f+'–'+r.a+' '+(r.result=='Passed'?'✓':r.result=='Defeated'?'✗':'tied')}).join(' · ')+'</div>':'');
+ if(ST.indexOf(b.stage)>=0){if(!b.draft||b.draft.stage!=b.stage)initDraft(b);h+=votePanel(b)}
+ if(b.stage=='Tie'){var r=b.record[b.record.length-1];h+='<p>The '+esc(r.stage)+' vote is tied '+r.f+'–'+r.a+'. The Mayor'+(my?' ('+esc(my.name)+')':'')+' has the casting vote.</p><div class="row"><button onclick="castingVote(\''+b.id+'\',\'For\')">Casting vote: For</button><button onclick="castingVote(\''+b.id+'\',\'Against\')">Casting vote: Against</button></div>'}
+ if(b.stage=='Mayor')h+='<p class="mut" style="margin:6px 0">Passed both houses'+(b.amend?' with the amendment':'')+'. Waiting for the Mayor'+(my?' ('+esc(my.name)+')':'')+'.</p><div class="row"><button class="p" onclick="mayorDecide(\''+b.id+'\',true)">Mayor assents</button><button class="d" onclick="mayorDecide(\''+b.id+'\',false)">Mayor vetoes</button></div>';
+ if(b.stage=='Law')h+='<p class="g" style="margin:6px 0">Assented'+(b.mayorName?' by '+esc(b.mayorName):'')+' on '+esc(b.decided)+'.</p>'+lawTools(b);
+ if(b.stage=='Vetoed')h+='<p class="b" style="margin:6px 0">Vetoed'+(b.mayorName?' by '+esc(b.mayorName):'')+' on '+esc(b.decided)+'.</p>';
+ return h+recordHtml(b)+'<div class="row" style="margin-top:6px"><button class="d" onclick="delBill(\''+b.id+'\')">Remove bill</button></div></div>'}
+function billsView(){var all=bl();if(!all.length)return'<span class="mut">No bills yet. Introduce one above.</span>';
+ var sec=function(t,l){return l.length?'<h3>'+t+' ('+l.length+')</h3>'+l.map(billCard).join(''):''};
+ var fin=['Law','Defeated','Vetoed'];
+ return sec('In progress',all.filter(function(b){return fin.indexOf(b.stage)<0}))+sec('Laws passed',all.filter(function(b){return b.stage=='Law'}))+sec('Defeated and vetoed',all.filter(function(b){return b.stage=='Defeated'||b.stage=='Vetoed'}))}
+var lastBs=null;
+function syncBp(){var c=S.cands.find(function(x){return x.id==$('bs').value}),f=c?portfolio(c):null;$('bp').value=f||'General';lastBs=$('bs').value}
+function rbase(r){return(r||'').trim().replace(/\s+/g,' ').replace(/^opposition /i,'').toLowerCase()}
+function rkeys(c){return[c.primary,c.secondary].map(rbase).filter(function(b){return b&&b!='mayor'&&b!='former mayor'})}
+function govRoles(){var g=govId();if(!g)return null;var set={};S.cands.forEach(function(c){if(c.status=='active'&&c.partyId==g){var f=portfolio(c);if(f)set[f]=true}});return ROLES.filter(function(r){return set[r]})}
+function parseRole(r){var t=(r||'').trim();return{r:t,b:rbase(t),o:/^opposition\s/i.test(t)}}
+function roleKeys(x){return[x.primary,x.secondary].map(parseRole).filter(function(k){return k.b&&k.b!='mayor'&&k.b!='former mayor'})}
+function isPortfolio(b){return ROLES.some(function(r){return r.toLowerCase()==b})}
+function roleMaps(exceptId){var pl={},op={},pt={};S.cands.forEach(function(x){if(x.status!='active'||x.id==exceptId)return;
+ var ks=roleKeys(x),hasOpp={};ks.forEach(function(k){if(k.o)hasOpp[k.b]=1});
+ ks.forEach(function(k){if(isPortfolio(k.b)&&k.b!='finance minister'){if(k.o)op[k.b]=x.name;else if(!hasOpp[k.b])pl[k.b]=x.name}else if(x.partyId){(pt[x.partyId]=pt[x.partyId]||{})[k.b]=x.name}})});
+ return{pl:pl,op:op,pt:pt}}
+function clashes(pid,exceptId,p1,p2){var m=roleMaps(exceptId),out=[],gr=(pid&&pid==S.oppId)?govRoles():null,hasOpp={},ks=[p1,p2].map(parseRole).filter(function(k){return k.b&&k.b!='mayor'&&k.b!='former mayor'});
+ ks.forEach(function(k){if(k.o)hasOpp[k.b]=1});
+ ks.forEach(function(k){var canon=ROLES.find(function(x){return x.toLowerCase()==k.b}),nm=k.r.replace(/^opposition\s+/i,'');
+  if(canon&&k.b!='finance minister'){
+   if(k.o&&m.op[k.b])out.push({n:m.op[k.b],msg:'Opposition '+canon+' is already held by '+m.op[k.b]+'.'});
+   else if(!k.o&&!hasOpp[k.b]&&m.pl[k.b])out.push({n:m.pl[k.b],msg:canon+' is already held by '+m.pl[k.b]+'.'});
+  }else if(pid&&m.pt[pid]&&m.pt[pid][k.b])out.push({n:m.pt[pid][k.b],msg:nm+' is already held by '+m.pt[pid][k.b]+' in this party.'});
+  if(gr&&canon&&gr.indexOf(canon)<0)out.push({n:'',msg:'The Government has no '+canon+', so the Opposition has nothing to oppose there.'})});
+ return out}
+function roleClash(pid,exceptId,p1,p2){var c=clashes(pid,exceptId,p1,p2);if(c.length)return c[0].msg;
+ var my=S.cands.find(function(x){return x.status=='active'&&x.primary=='Mayor'&&x.id!=exceptId});
+ if(my&&[p1,p2].some(function(r){return(r||'').trim().toLowerCase()=='mayor'}))return'There is already a Mayor ('+my.name+').';
+ return null}
+function roleOpts(pid,exceptId,field){var m=roleMaps(exceptId),opp=!!pid&&pid==S.oppId,showOpp=!S.oppId||opp||!pid,gr=opp?govRoles():null,base=gr||ROLES,pl=[],oL=[],o;
+ base.forEach(function(r){var k=r.toLowerCase();
+  if(k=='finance minister'){var t=(pid&&m.pt[pid])?m.pt[pid][k]:null;if(!t){pl.push(r);oL.push('Opposition '+r)}}
+  else{if(opp?!m.op[k]:!m.pl[k])pl.push(r);if(!m.op[k])oL.push('Opposition '+r)}});
+ if(opp)o=field=='primary'?oL:pl.concat(oL);else o=showOpp?pl.concat(oL):pl;
+ if(field=='primary'&&!S.cands.some(function(x){return x.status=='active'&&x.primary=='Mayor'&&x.id!=exceptId}))o.unshift('Mayor');
+ return o.map(function(r){return'<option>'+esc(r)+'</option>'}).join('')}
+function dupNote(c){var n=[];clashes(c.partyId,c.id,c.primary,c.secondary).forEach(function(x){if(x.n&&n.indexOf(x.n)<0)n.push(x.n)});return n.length?'<br><small class="b">⚠ Same role as '+n.map(esc).join(', ')+'</small>':''}
 function pstat(p,govP){if(!govP)return'';if(p.id==govP)return'Government';if(!S.oppId||!party(S.oppId))return'Undecided';return p.id==S.oppId?'Opposition':'Crossbench'}
 function stBadge(t){if(!t)return'';var k={Government:'g',Opposition:'b',Crossbench:'mut',Undecided:'mut'}[t];return'<span class="badge '+k+'">'+t+'</span>'}
 function oppView(){var ps=S.parties;if(!ps.length)return'<span class="mut">Add parties first.</span>';
@@ -118,16 +241,22 @@ function oppView(){var ps=S.parties;if(!ps.length)return'<span class="mut">Add p
  return top+sm+(body?'<table>'+head+body+'</table>':'<span class="mut">No portfolio roles assigned yet.</span>')}
 
 function addParty(){var n=$('pn').value.trim();if(!n)return;S.parties.push({id:uid(),name:n,color:$('pc').value});$('pn').value='';save()}
-function delParty(id){var p=party(id);if(!confirm('Remove "'+p.name+'"? Its active members become unassigned.'))return;
+function delParty(id){var p=party(id);if(!p)return;ask('Remove "'+p.name+'"? Its active members become unassigned.','Remove party',function(){
  S.cands.forEach(function(c){if(c.partyId==id&&c.status=='active'){c.partyId=null;c.seat=null;c.votes=null}});
- S.parties=S.parties.filter(function(x){return x.id!=id});S.actions=S.actions.filter(function(a){return a.partyId!=id});save()}
+ if(S.oppId==id)S.oppId=null;
+ S.parties=S.parties.filter(function(x){return x.id!=id});S.actions=S.actions.filter(function(a){return a.partyId!=id});save()})}
 function addCand(){var n=$('cn').value.trim(),pid=$('cp').value;if(!n)return;
  if(pid&&members(pid).length>=MAX){alert('That party already has '+MAX+' members. Remove one first.');return}
  var q1=$('c1').value.trim(),q2=$('c2').value.trim();
+ var cl=pid?roleClash(pid,null,q1,q2):null;if(cl){alert(cl);return}
  readPhoto($('cf'),function(ph){S.cands.push({id:uid(),name:n,partyId:pid||null,primary:q1,secondary:q2,status:'active',photo:ph,seat:(pid&&party(pid)&&party(pid).hs)?'Unseated':null});
  ['cn','c1','c2','cf'].forEach(function(i){$(i).value=''});save()})}
-function rmCand(id){var c=S.cands.find(function(x){return x.id==id});c.status='removed';c.reason=$('r'+id).value;c.date=new Date().toLocaleDateString();c.formerParty=c.partyId;save()}
-function assign(id){var pid=$('as'+id).value;if(!pid)return;if(members(pid).length>=MAX){alert('Party is full.');return}var cc=S.cands.find(function(x){return x.id==id});cc.partyId=pid;cc.seat=(party(pid)&&party(pid).hs)?'Unseated':null;cc.votes=null;save()}
+function rmCand(id){var c=S.cands.find(function(x){return x.id==id}),r=$('r'+id).value,p=party(c.partyId),nm=c.name+' - '+(p?p.name:'Unassigned');
+ var msg=r=='Death'?'I\'m sorry to hear about the loss of '+nm+'. This death will be recorded in the notices if you click confirm.':r=='Resigned'?'Click confirm to file for the resignation of '+nm+'.':nm+' has finally retired, looks like you need a new candidate. Please confirm this.';
+ ask(msg,'Confirm',function(){var d=new Date().toLocaleDateString();c.status='removed';c.reason=r;c.date=d;c.formerParty=c.partyId;
+  (S.notices=S.notices||[]).push({id:uid(),date:d,type:r,text:(r=='Death'?'Death notice':r=='Resigned'?'Resignation filed':'Retirement')+': '+nm+(c.primary?' ('+c.primary+')':'')});save()})}
+function assign(id){var pid=$('as'+id).value;if(!pid)return;if(members(pid).length>=MAX){alert('Party is full.');return}
+ var c0=S.cands.find(function(x){return x.id==id}),cl=roleClash(pid,id,c0.primary,c0.secondary);if(cl){alert(cl+' Edit their role first.');return}var cc=S.cands.find(function(x){return x.id==id});cc.partyId=pid;cc.seat=(party(pid)&&party(pid).hs)?'Unseated':null;cc.votes=null;save()}
 
 function readPhoto(inp,cb){var f=inp&&inp.files&&inp.files[0];if(!f)return cb(null);var r=new FileReader();r.onload=function(){var im=new Image();im.onload=function(){var s=120,cv=document.createElement('canvas');cv.width=cv.height=s;var m=Math.min(im.width,im.height);cv.getContext('2d').drawImage(im,(im.width-m)/2,(im.height-m)/2,m,m,0,0,s,s);cb(cv.toDataURL('image/jpeg',0.8))};im.onerror=function(){cb(null)};im.src=r.result};r.onerror=function(){cb(null)};r.readAsDataURL(f)}
 function av(c){return c.photo?'<img class="av" alt="" src="'+esc(c.photo)+'">':'<span class="av">'+esc((c.name||'?').charAt(0).toUpperCase())+'</span>'}
@@ -140,6 +269,7 @@ function edit(id){editing=id;render()}
 function saveEdit(id){var c=S.cands.find(function(x){return x.id==id});
  var n=$('en_'+id).value.trim()||c.name,p1=$('e1_'+id).value.trim(),p2=$('e2_'+id).value.trim(),pid=$('ep_'+id).value||null;
  if(pid&&pid!=c.partyId&&members(pid).length>=MAX){alert('That party already has '+MAX+' members.');return}
+ var cl=pid?roleClash(pid,id,p1,p2):null;if(cl){alert(cl);return}
  var d=new Date().toLocaleDateString(),L=c.log=c.log||[];
  if(p1!=(c.primary||''))L.push(d+' Primary: '+(c.primary||'none')+' → '+(p1||'none'));
  if(p2!=(c.secondary||''))L.push(d+' Secondary: '+(c.secondary||'none')+' → '+(p2||'none'));
@@ -147,20 +277,24 @@ function saveEdit(id){var c=S.cands.find(function(x){return x.id==id});
  readPhoto($('ef_'+id),function(ph){if(pid!=c.partyId){c.seat=(pid&&party(pid)&&party(pid).hs)?'Unseated':null;c.votes=null}c.name=n;c.primary=p1;c.secondary=p2;c.partyId=pid;c.notes=$('enote_'+id).value.trim();if(ph)c.photo=ph;editing=null;save()})}
 function memberRow(c,assignable){
  if(editing==c.id){
-  return'<div class="m"><div class="row" style="width:100%;margin:0"><input id="en_'+c.id+'" value="'+esc(c.name)+'"><input id="e1_'+c.id+'" list="roles" value="'+esc(c.primary)+'" placeholder="Primary role"><input id="e2_'+c.id+'" list="roles" value="'+esc(c.secondary)+'" placeholder="Secondary role"><input id="enote_'+c.id+'" value="'+esc(c.notes)+'" placeholder="Notes (e.g. Former Mayor)"><select id="ep_'+c.id+'"><option value="">Unassigned</option>'+S.parties.map(function(p){return'<option value="'+p.id+'"'+(p.id==c.partyId?' selected':'')+'>'+esc(p.name)+'</option>'}).join('')+'</select><input type="file" id="ef_'+c.id+'" accept="image/*" title="New photo"><button class="p" onclick="saveEdit(\''+c.id+'\')">Save</button><button onclick="edit(null)">Cancel</button></div></div>'}
- var h='<div class="m"><div style="display:flex;gap:8px;align-items:center">'+av(c)+'<div><b>'+esc(c.name)+'</b>'+seatBadge(c)+'<br><small>'+esc(c.primary||'—')+(c.secondary?' / '+esc(c.secondary):'')+'</small>'+(c.log&&c.log.length?'<br><small class="mut">'+c.log.slice(-3).map(esc).join(' · ')+'</small>':'')+(c.notes?'<br><small class="mut">📝 '+esc(c.notes)+'</small>':'')+opp(c)+'</div></div><div class="row" style="margin:0">';
+  return'<div class="m"><div class="row" style="width:100%;margin:0"><input id="en_'+c.id+'" value="'+esc(c.name)+'"><input id="e1_'+c.id+'" list="dlp_'+c.id+'" value="'+esc(c.primary)+'" placeholder="Primary role"><input id="e2_'+c.id+'" list="dls_'+c.id+'" value="'+esc(c.secondary)+'" placeholder="Secondary role"><input id="enote_'+c.id+'" value="'+esc(c.notes)+'" placeholder="Notes (e.g. Former Mayor)"><datalist id="dlp_'+c.id+'">'+roleOpts(c.partyId,c.id,'primary')+'</datalist><datalist id="dls_'+c.id+'">'+roleOpts(c.partyId,c.id,'secondary')+'</datalist><select id="ep_'+c.id+'"><option value="">Unassigned</option>'+S.parties.map(function(p){return'<option value="'+p.id+'"'+(p.id==c.partyId?' selected':'')+'>'+esc(p.name)+'</option>'}).join('')+'</select><input type="file" id="ef_'+c.id+'" accept="image/*" title="New photo"><button class="p" onclick="saveEdit(\''+c.id+'\')">Save</button><button onclick="edit(null)">Cancel</button></div></div>'}
+ var h='<div class="m"><div style="display:flex;gap:8px;align-items:center">'+av(c)+'<div><b>'+esc(c.name)+'</b>'+seatBadge(c)+'<br><small>'+esc(c.primary||'—')+(c.secondary?' / '+esc(c.secondary):'')+'</small>'+(c.log&&c.log.length?'<br><small class="mut">'+c.log.slice(-3).map(esc).join(' · ')+'</small>':'')+(c.notes?'<br><small class="mut">📝 '+esc(c.notes)+'</small>':'')+opp(c)+dupNote(c)+'</div></div><div class="row" style="margin:0">';
  if(assignable){h+='<select id="as'+c.id+'">'+S.parties.map(function(p){return'<option value="'+p.id+'">'+esc(p.name)+'</option>'}).join('')+'</select><button onclick="assign(\''+c.id+'\')">Assign</button>'}
  return h+(c.secondary?'<button onclick="swapRoles(\''+c.id+'\')" title="Swap primary and secondary roles">⇄ Swap</button>':'')+'<button onclick="edit(\''+c.id+'\')">Edit</button>'+(c.partyId?'<button onclick="releaseCand(\''+c.id+'\')" title="Move to the Unassigned pool">Release</button>':'')+'<select id="r'+c.id+'"><option>Death</option><option>Resigned</option><option>Retired</option></select><button class="d" onclick="rmCand(\''+c.id+'\')">Remove</button></div></div>'}
 
 function render(){
  $('ev').value=S.eligible||'';$('opp').innerHTML=oppView();$('parl').innerHTML=parlView();
+ $('notices').innerHTML=(S.notices&&S.notices.length)?S.notices.slice().reverse().map(function(n){return'<div class="m"><div><span class="badge '+(n.type=='Death'?'b':'mut')+'">'+esc(n.type)+'</span> '+esc(n.text)+'</div><small class="mut">'+esc(n.date)+'</small></div>'}).join(''):'<span class="mut">No notices yet.</span>';
+ var sp=S.cands.filter(function(c){return c.status=='active'&&(c.seat=='House'||c.seat=='Senate')}).sort(function(a,b){var pa=(party(a.partyId)||{}).name||'',pb=(party(b.partyId)||{}).name||'';return pa<pb?-1:pa>pb?1:a.name<b.name?-1:1}),sv=$('bs').value;
+ $('bs').innerHTML=sp.length?sp.map(function(c){return'<option value="'+c.id+'">'+esc(c.name)+' ('+esc((party(c.partyId)||{}).name||'—')+' · '+c.seat+' · '+esc(c.primary||'no role')+')</option>'}).join(''):'<option value="">No seated members yet</option>';$('bs').value=sv;if($('bs').value!==lastBs)syncBp();
+ $('bills').innerHTML=billsView();
  $('fees').innerHTML=S.parties.length?S.parties.map(function(p){var f=fee(p.id);return'<div class="m"><div><b style="color:'+esc(p.color)+'">'+esc(p.name)+'</b>'+(members(p.id).length<MAX?' <small class="b">Not eligible: '+members(p.id).length+'/'+MAX+' members</small>':'')+'</div><div class="row" style="margin:0"><label><input type="checkbox" style="flex:none"'+(f.paid?' checked':'')+' onchange="setFee(\''+p.id+'\',\'paid\',this.checked)"> Paid</label><input type="number" min="0" step="any" placeholder="Fee amount" style="flex:0 1 120px" value="'+(f.amount==null?'':f.amount)+'" onchange="setFee(\''+p.id+'\',\'amount\',this.value)"><input type="date" style="flex:0 1 150px" value="'+esc(f.date)+'" onchange="setFee(\''+p.id+'\',\'date\',this.value)"></div></div>'}).join(''):'<span class="mut">Add parties first.</span>';
  var opts=S.parties.map(function(p){return'<option value="'+p.id+'">'+esc(p.name)+' ('+members(p.id).length+'/'+MAX+')</option>'}).join('');
- var cur=$('cp').value;$('cp').innerHTML='<option value="">Unassigned</option>'+opts;$('cp').value=cur;
+ var cur=$('cp').value;$('cp').innerHTML='<option value="">Unassigned</option>'+opts;$('cp').value=cur;$('dlp_new').innerHTML=roleOpts($('cp').value||null,null,'primary');$('dls_new').innerHTML=roleOpts($('cp').value||null,null,'secondary');
  var cur2=$('ap').value;$('ap').innerHTML=opts||'<option value="">Add a party first</option>';$('ap').value=cur2;
  var cv=$('at').value;$('at').innerHTML='<option value="">Whole party</option>'+members($('ap').value).map(function(c){return'<option value="'+c.id+'">'+esc(c.name)+'</option>'}).join('');$('at').value=cv;
  $('parties').innerHTML=S.parties.map(function(p){var m=members(p.id);
-  return'<div class="card pt" style="border-left-color:'+esc(p.color)+'"><div class="row" style="justify-content:space-between"><h2 style="margin:0">'+esc(p.name)+' <span class="badge">'+m.length+'/'+MAX+'</span></h2><span><button onclick="swapParty(\''+p.id+'\')" title="Swap primary and secondary roles for everyone in this party">⇄ Swap roles</button> <button class="d" onclick="delParty(\''+p.id+'\')">Remove party</button></span></div>'
+  return'<div class="card pt" style="border-left-color:'+esc(p.color)+'"><div class="row" style="justify-content:space-between"><h2 style="margin:0">'+esc(p.name)+' <span class="badge">'+m.length+'/'+MAX+'</span> '+stBadge(pstat(p,govId()))+'</h2><span><button onclick="swapParty(\''+p.id+'\')" title="Swap primary and secondary roles for everyone in this party">⇄ Swap roles</button> <button class="d" onclick="delParty(\''+p.id+'\')">Remove party</button></span></div>'
   +(m.length?m.map(function(c){return memberRow(c)}).join(''):'<div class="mut">No members.</div>')
   +(m.length<MAX?'<div class="mut" style="margin-top:6px">'+(MAX-m.length)+' vacancy(ies)</div>':'')+'</div>'}).join('')||'<div class="mut">No parties yet.</div>';
  var un=S.cands.filter(function(c){return c.status=='active'&&!c.partyId});
