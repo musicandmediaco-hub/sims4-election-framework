@@ -105,7 +105,12 @@ function refreshRoleLists(){
  var bp=document.getElementById('bp'),v=bp.value;
  bp.innerHTML=['General'].concat(ROLES).map(function(r){return'<option>'+esc(r)+'</option>'}).join('');
  bp.value=v;if(bp.value!==v)bp.value='General'}
-function roleHolders(r){var out=[];S.cands.forEach(function(c){if(c.status!='active'||!c.partyId)return;if(portfolio(c)!=r)return;out.push({c:c,p:party(c.partyId),opp:/^Opposition /i.test(c.primary||'')})});return out}
+function roleHolders(r){var out=[];S.cands.forEach(function(c){if(c.status!='active'||!c.partyId)return;
+ var isO=/^Opposition /i.test(c.primary||'');
+ if(portfolio(c)==r)out.push({c:c,p:party(c.partyId),opp:isO});
+ else if(isO&&c.secondary&&c.secondary==r)out.push({c:c,p:party(c.partyId),opp:false})});
+ if(!out.length){var sc=S.cands.filter(function(c){return c.status=='active'&&c.partyId&&c.secondary==r});if(sc.length==1)out.push({c:sc[0],p:party(sc[0].partyId),opp:false})}
+ return out}
 function officeHolder(p,r){var id=(p.office||{})[r];if(!id)return null;return S.cands.find(function(c){return c.id==id&&c.status=='active'&&c.partyId==p.id})||null}
 function officeBadge(c){var p=party(c.partyId);if(!p)return'';return OFFICE.filter(function(r){var h=officeHolder(p,r);return h&&h.id==c.id}).map(function(r){return' <span class="badge">'+esc(r)+'</span>'}).join('')}
 function setOffice(pid,i,cid){var p=party(pid),r=OFFICE[i];if(!p||r==null)return;p.office=p.office||{};if(cid)p.office[r]=cid;else delete p.office[r];save()}
