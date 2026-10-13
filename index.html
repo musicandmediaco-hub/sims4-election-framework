@@ -8,7 +8,7 @@
 :root[data-theme="dark"]{--bg:#14171d;--card:#1e222b;--tx:#e8eaf0;--mut:#9aa3b2;--bd:#323846;--ac:#7c93f5;--good:#51cf66;--bad:#ff6b6b}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.45 system-ui,sans-serif;padding:16px;max-width:980px;margin:auto}
 h1{font-size:20px;margin:0 0 12px}h2{font-size:16px;margin:0 0 8px}h3{font-size:14px;margin:12px 0 6px;color:var(--mut)}
-.tabs{display:flex;gap:6px;margin-bottom:12px}.tabs button{flex:1}
+.tabs{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}.tabs button{flex:1 1 auto}
 .card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:12px;margin-bottom:12px}
 .row{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px}
 input,select,button{font:inherit;color:var(--tx);background:var(--card);border:1px solid var(--bd);border-radius:6px;padding:6px 8px;min-width:0}
@@ -31,7 +31,7 @@ textarea{font:inherit;color:var(--tx);background:var(--card);border:1px solid va
 <div id="err" class="hide" style="background:var(--bad);color:#fff;padding:8px 10px;border-radius:6px;margin-bottom:8px"></div>
 <div id="md" class="mo hide"><div class="mb"><p id="mdMsg"></p><div class="row" style="margin:0"><button class="p" id="mdOk" onclick="mdYes()">Confirm</button><button id="mdNo" onclick="mdNo()">Cancel</button></div></div></div>
 <div class="row"><button onclick="exportData()">⬇ Export backup</button><button onclick="$('imp').click()">⬆ Import backup</button><input type="file" id="imp" accept=".json,application/json" class="hide" onchange="importData(this)"><span class="mut">Back up regularly — data is stored in this browser only.</span></div>
-<div class="tabs"><button class="t on" id="t1" onclick="tab(1)">Parties &amp; Candidates</button><button class="t" id="t2" onclick="tab(2)">Election</button><button class="t" id="t3" onclick="tab(3)">Government &amp; Opposition</button><button class="t" id="t4" onclick="tab(4)">Parliament</button><button class="t" id="t5" onclick="tab(5)">Pass the bill</button></div>
+<div class="tabs"><button class="t on" id="t1" onclick="tab(1)">Parties &amp; Candidates</button><button class="t" id="t6" onclick="tab(6)">Role manager</button><button class="t" id="t2" onclick="tab(2)">Election</button><button class="t" id="t3" onclick="tab(3)">Government &amp; Opposition</button><button class="t" id="t4" onclick="tab(4)">Parliament</button><button class="t" id="t5" onclick="tab(5)">Pass the bill</button></div>
 
 <div id="v1">
  <div class="card"><h2>Add party</h2><div class="row"><input id="pn" placeholder="Party name"><input type="color" id="pc" value="#3b5bdb"><button class="p" onclick="addParty()">Add party</button></div></div>
@@ -44,6 +44,14 @@ textarea{font:inherit;color:var(--tx);background:var(--card);border:1px solid va
  <div class="card hide" id="unCard"><h2>Unassigned candidates</h2><div id="un"></div></div>
  <div class="card"><h2>Notices</h2><div id="notices"></div></div>
  <div class="card"><h2>Former candidates</h2><div class="tw" id="former"></div></div>
+</div>
+
+<div id="v6" class="hide">
+ <div class="card"><h2>Add role</h2>
+  <div class="row"><input id="rn" placeholder="Role name (e.g. Sport Minister)" maxlength="60"><select id="rk"><option value="g">Portfolio (one holder across all parties)</option><option value="o">Party office (one holder per party)</option></select><button class="p" onclick="addRole()">Add role</button></div>
+  <div class="mut">Portfolio roles appear in the role suggestions on the Parties &amp; Candidates page and in the bill portfolio list. Party office roles are filled in the Party office roles section below. Sims are assigned to portfolio roles from the Parties &amp; Candidates page.</div></div>
+ <div class="card"><h2>Portfolio roles</h2><div class="tw" id="rolesTbl"></div></div>
+ <div class="card"><h2>Party office roles</h2><div class="tw" id="officeRolesTbl"></div></div>
 </div>
 
 <div id="v2" class="hide">
@@ -88,15 +96,72 @@ function mdYes(){var f=MD_FN;MD_FN=null;$('md').classList.add('hide');if(f)f()}
 function mdNo(){MD_FN=null;$('md').classList.add('hide')}
 function note(m){ask(String(m),'OK',null,true)}
 if(typeof window!=='undefined'){window.alert=note;window.addEventListener('error',function(e){var b=$('err');b.textContent='Something went wrong: '+(e.message||'unknown error')+'. Try refreshing, and export a backup if you can.';b.classList.remove('hide')})}
-var ROLES=['Finance Minister','Foreign Affairs Minister','Arts Minister','Police Minister','Health Minister','Travel Minister','Wellness Minister','Science Minister','Small Business','Environment','Communications','Entertainment','Education','Technology & Innovation','Public Happiness','Minister for Trade','Citizen Welfare Minister','Magical Affairs Spokesperson','Minister for Justice','Jobs & Industry Minister','Economic Sovereignty Minister','Minister for Sustainable Development','Energy and Resources Minister'];
-document.getElementById('roles').innerHTML=['Mayor','Former Mayor'].concat(ROLES,ROLES.map(function(r){return'Opposition '+r})).map(function(r){return'<option>'+esc(r)+'</option>'}).join('');
-document.getElementById('bp').innerHTML=['General'].concat(ROLES).map(function(r){return'<option>'+esc(r)+'</option>'}).join('');
+var DEF_ROLES=['Finance Minister','Foreign Affairs Minister','Arts Minister','Police Minister','Health Minister','Travel Minister','Wellness Minister','Science Minister','Small Business','Environment','Communications','Entertainment','Education','Technology & Innovation','Public Happiness','Minister for Trade','Citizen Welfare Minister','Magical Affairs Spokesperson','Minister for Justice','Jobs & Industry Minister','Economic Sovereignty Minister','Minister for Sustainable Development','Energy and Resources Minister'];
+var ROLES=[],OFFICE=[],DEF_OFFICE=['Treasurer'];
+function syncRoles(){ROLES.length=0;OFFICE.length=0;(Array.isArray(S.roles)?S.roles:DEF_ROLES).forEach(function(r){ROLES.push(r)});(Array.isArray(S.officeRoles)?S.officeRoles:DEF_OFFICE).forEach(function(r){OFFICE.push(r)})}
+syncRoles();
+function refreshRoleLists(){
+ document.getElementById('roles').innerHTML=['Mayor','Former Mayor'].concat(ROLES,ROLES.map(function(r){return'Opposition '+r})).map(function(r){return'<option>'+esc(r)+'</option>'}).join('');
+ var bp=document.getElementById('bp'),v=bp.value;
+ bp.innerHTML=['General'].concat(ROLES).map(function(r){return'<option>'+esc(r)+'</option>'}).join('');
+ bp.value=v;if(bp.value!==v)bp.value='General'}
+function roleHolders(r){var out=[];S.cands.forEach(function(c){if(c.status!='active'||!c.partyId)return;if(portfolio(c)!=r)return;out.push({c:c,p:party(c.partyId),opp:/^Opposition /i.test(c.primary||'')})});return out}
+function officeHolder(p,r){var id=(p.office||{})[r];if(!id)return null;return S.cands.find(function(c){return c.id==id&&c.status=='active'&&c.partyId==p.id})||null}
+function officeBadge(c){var p=party(c.partyId);if(!p)return'';return OFFICE.filter(function(r){var h=officeHolder(p,r);return h&&h.id==c.id}).map(function(r){return' <span class="badge">'+esc(r)+'</span>'}).join('')}
+function setOffice(pid,i,cid){var p=party(pid),r=OFFICE[i];if(!p||r==null)return;p.office=p.office||{};if(cid)p.office[r]=cid;else delete p.office[r];save()}
+function roleErr(n,kind,idx){if(!n)return'Enter a role name.';
+ var l=n.toLowerCase();
+ if(/^opposition(\s|$)/.test(l))return'Role names cannot start with "Opposition". The Opposition version of a role is created automatically.';
+ if(l=='mayor'||l=='former mayor')return'"'+n+'" is reserved.';
+ if(ROLES.some(function(r,i){return!(kind=='g'&&i==idx)&&r.toLowerCase()==l})||OFFICE.some(function(r,i){return!(kind=='o'&&i==idx)&&r.toLowerCase()==l}))return'A role called "'+n+'" already exists.';
+ return null}
+function saveRoles(){S.roles=ROLES.slice();S.officeRoles=OFFICE.slice();save()}
+function addRole(){var n=$('rn').value.trim().replace(/\s+/g,' '),k=$('rk').value,e=roleErr(n,k,-1);if(e){alert(e);return}
+ (k=='o'?OFFICE:ROLES).push(n);$('rn').value='';saveRoles()}
+var editingRole=null;
+function editRole(k,i){editingRole=k==null?null:k+i;render()}
+function renameRole(k,i){var list=k=='o'?OFFICE:ROLES,old=list[i],n=$('rne_'+k+i).value.trim().replace(/\s+/g,' '),e=roleErr(n,k,i);if(e){alert(e);return}
+ if(n==old){editingRole=null;render();return}
+ if(k=='o'){S.parties.forEach(function(p){if(p.office&&p.office[old]!==undefined){p.office[n]=p.office[old];delete p.office[old]}})}
+ else{
+  var d=new Date().toLocaleDateString(),fix=function(r){if(!r)return r;if(r==old)return n;if(r=='Opposition '+old)return'Opposition '+n;return r};
+  S.cands.forEach(function(c){var p=fix(c.primary),s=fix(c.secondary),b=fix(c.base);
+   if(p!=c.primary||s!=c.secondary||b!=c.base){var L=c.log=c.log||[];if(p!=c.primary)L.push(d+' Primary: '+c.primary+' → '+p);if(s!=c.secondary)L.push(d+' Secondary: '+c.secondary+' → '+s);c.primary=p;c.secondary=s;if(c.base!==undefined)c.base=b}});
+  (S.bills||[]).forEach(function(b){if(b.portfolio==old)b.portfolio=n})}
+ list[i]=n;editingRole=null;saveRoles()}
+function delRole(k,i){
+ if(k=='o'){var r=OFFICE[i],h=S.parties.map(function(p){var x=officeHolder(p,r);return x?x.name+' ('+p.name+')':null}).filter(Boolean);
+  ask('Delete the party office role "'+r+'"?'+(h.length?' '+h.join(', ')+' will lose this office.':''),'Delete role',function(){S.parties.forEach(function(p){if(p.office)delete p.office[r]});OFFICE.splice(OFFICE.indexOf(r),1);saveRoles()});return}
+ var r=ROLES[i],h=roleHolders(r),msg='Delete the role "'+r+'"?'+(h.length?' '+h.map(function(x){return x.c.name}).join(', ')+' will lose this role.':'');
+ ask(msg,'Delete role',function(){var d=new Date().toLocaleDateString(),clear=function(x){return(x==r||x=='Opposition '+r)};
+  S.cands.forEach(function(c){var L=c.log=c.log||[],pc=clear(c.primary),sc=clear(c.secondary);
+   if(pc){L.push(d+' Primary: '+c.primary+' → none');c.primary=''}
+   if(sc){L.push(d+' Secondary: '+c.secondary+' → none');c.secondary=''}
+   if(c.base&&c.base==r)c.base=''});
+  (S.bills||[]).forEach(function(b){if(b.portfolio==r)b.portfolio='General'});
+  ROLES.splice(ROLES.indexOf(r),1);saveRoles()})}
+function roleBtns(k,i){return editingRole==k+i?'<button class="p" onclick="renameRole(\''+k+'\','+i+')">Save</button> <button onclick="editRole(null)">Cancel</button>':'<button onclick="editRole(\''+k+'\','+i+')">Edit</button> <button class="d" onclick="delRole(\''+k+'\','+i+')">Delete</button>'}
+function roleName(k,i,r){return editingRole==k+i?'<input id="rne_'+k+i+'" value="'+esc(r)+'" maxlength="60">':'<b>'+esc(r)+'</b>'}
+function rolesView(){if(!ROLES.length)return'<span class="mut">No portfolio roles yet. Add one above.</span>';
+ var h='<table><tr><th>Role name</th><th>Held by party</th><th>Held by Sim</th><th></th></tr>';
+ ROLES.forEach(function(r,i){var hs=roleHolders(r);
+  var pc=hs.length?hs.map(function(x){return'<span style="color:'+esc(x.p?x.p.color:'inherit')+'"><b>'+esc(x.p?x.p.name:'—')+'</b></span>'+(x.opp?' <small class="mut">(Opposition)</small>':'')}).join('<br>'):'<span class="mut">Vacant</span>';
+  var sc=hs.length?hs.map(function(x){return esc(x.c.name)}).join('<br>'):'<span class="mut">—</span>';
+  h+='<tr><td>'+roleName('g',i,r)+'</td><td>'+pc+'</td><td>'+sc+'</td><td style="white-space:nowrap">'+roleBtns('g',i)+'</td></tr>'});
+ return h+'</table>'}
+function officeRolesView(){if(!OFFICE.length)return'<span class="mut">No party office roles yet. Add one above.</span>';
+ var h='<table><tr><th>Role name</th><th>Held by party</th><th>Held by Sim</th><th></th></tr>',ps=S.parties;
+ OFFICE.forEach(function(r,i){var n=Math.max(1,ps.length),nm='<td rowspan="'+n+'">'+roleName('o',i,r)+'</td>',bt='<td rowspan="'+n+'" style="white-space:nowrap">'+roleBtns('o',i)+'</td>';
+  if(!ps.length){h+='<tr>'+nm+'<td class="mut">No parties</td><td class="mut">—</td>'+bt+'</tr>';return}
+  ps.forEach(function(p,j){var c=officeHolder(p,r);
+   h+='<tr>'+(j==0?nm:'')+'<td><span style="color:'+esc(p.color)+'"><b>'+esc(p.name)+'</b></span></td><td><select onchange="setOffice(\''+p.id+'\','+i+',this.value)"><option value="">— vacant —</option>'+members(p.id).map(function(m){return'<option value="'+m.id+'"'+(c&&c.id==m.id?' selected':'')+'>'+esc(m.name)+'</option>'}).join('')+'</select></td>'+(j==0?bt:'')+'</tr>'})});
+ return h+'</table>'}
 function party(id){return S.parties.find(function(p){return p.id==id})}
 function members(pid){return S.cands.filter(function(c){return c.status=='active'&&c.partyId==pid})}
-function tab(n){for(var i=1;i<=5;i++){$('v'+i).classList.toggle('hide',n!=i);$('t'+i).classList.toggle('on',n==i)}}
+function tab(n){for(var i=1;i<=6;i++){$('v'+i).classList.toggle('hide',n!=i);$('t'+i).classList.toggle('on',n==i)}}
 function exportData(){try{var b=new Blob([JSON.stringify(S)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='sims4-politics-backup-'+today()+'.json';document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove()},500)}catch(e){alert('Export failed: '+e.message)}}
 function importData(inp){var f=inp.files&&inp.files[0];if(!f)return;var r=new FileReader();r.onload=function(){try{var d=JSON.parse(r.result);if(!d||!Array.isArray(d.parties)||!Array.isArray(d.cands))throw new Error('This does not look like an election backup.');
- ask('Replace everything on this page with the backup ('+d.parties.length+' parties, '+d.cands.length+' candidates)?','Replace',function(){S=Object.assign({parties:[],cands:[],actions:[],history:[],notices:[]},d);save()})}catch(e){alert('Import failed: '+e.message)}inp.value=''};r.readAsText(f)}
+ ask('Replace everything on this page with the backup ('+d.parties.length+' parties, '+d.cands.length+' candidates)?','Replace',function(){S=Object.assign({parties:[],cands:[],actions:[],history:[],notices:[]},d);syncRoles();save()})}catch(e){alert('Import failed: '+e.message)}inp.value=''};r.readAsText(f)}
 function swapRoles(id){var c=S.cands.find(function(x){return x.id==id});if(!c||!c.secondary)return;setRoles(c,c.secondary,c.primary||'',new Date().toLocaleDateString());save()}
 function swapParty(pid){var m=members(pid).filter(function(c){return c.secondary});if(!m.length){alert('No members of this party have a secondary role to swap.');return}
  ask('Swap primary and secondary roles for '+m.length+' member(s) of '+party(pid).name+'?','Swap',function(){var d=new Date().toLocaleDateString();m.forEach(function(c){setRoles(c,c.secondary,c.primary||'',d)});save()})}
@@ -257,12 +322,12 @@ function roleKeys(x){return[x.primary,x.secondary].map(parseRole).filter(functio
 function isPortfolio(b){return ROLES.some(function(r){return r.toLowerCase()==b})}
 function roleMaps(exceptId){var pl={},op={},pt={};S.cands.forEach(function(x){if(x.status!='active'||x.id==exceptId)return;
  var ks=roleKeys(x),hasOpp={};ks.forEach(function(k){if(k.o)hasOpp[k.b]=1});
- ks.forEach(function(k){if(isPortfolio(k.b)&&k.b!='finance minister'){if(k.o)op[k.b]=x.name;else if(!hasOpp[k.b])pl[k.b]=x.name}else if(x.partyId){(pt[x.partyId]=pt[x.partyId]||{})[k.b]=x.name}})});
+ ks.forEach(function(k){if(isPortfolio(k.b)){if(k.o)op[k.b]=x.name;else if(!hasOpp[k.b])pl[k.b]=x.name}else if(x.partyId){(pt[x.partyId]=pt[x.partyId]||{})[k.b]=x.name}})});
  return{pl:pl,op:op,pt:pt}}
 function clashes(pid,exceptId,p1,p2){var m=roleMaps(exceptId),out=[],gr=(pid&&pid==S.oppId)?govRoles():null,hasOpp={},ks=[p1,p2].map(function(r,i){var k=parseRole(r);k.f=i;return k}).filter(function(k){return k.b&&k.b!='mayor'&&k.b!='former mayor'});
  ks.forEach(function(k){if(k.o)hasOpp[k.b]=1});
  ks.forEach(function(k){var canon=ROLES.find(function(x){return x.toLowerCase()==k.b}),nm=k.r.replace(/^opposition\s+/i,'');
-  if(canon&&k.b!='finance minister'){
+  if(canon){
    if(k.o&&m.op[k.b])out.push({n:m.op[k.b],msg:'Opposition '+canon+' is already held by '+m.op[k.b]+'.'});
    else if(!k.o&&!hasOpp[k.b]&&m.pl[k.b])out.push({n:m.pl[k.b],msg:canon+' is already held by '+m.pl[k.b]+'.'});
   }else if(pid&&m.pt[pid]&&m.pt[pid][k.b])out.push({n:m.pt[pid][k.b],msg:nm+' is already held by '+m.pt[pid][k.b]+' in this party.'});
@@ -273,7 +338,7 @@ function roleClash(pid,exceptId,p1,p2){var c=clashes(pid,exceptId,p1,p2);if(c.le
  if(my&&[p1,p2].some(function(r){return(r||'').trim().toLowerCase()=='mayor'}))return'There is already a Mayor ('+my.name+').';
  return null}
 function roleOpts(pid,exceptId,field){var m=roleMaps(exceptId),opp=!!pid&&pid==S.oppId,showOpp=!S.oppId||opp||!pid,gr=opp?govRoles():null;
- var avail=function(r,form){var k=r.toLowerCase();if(k=='finance minister'){var t=(pid&&m.pt[pid])?m.pt[pid][k]:null;return !t}return form=='opp'?!m.op[k]:!m.pl[k]};
+ var avail=function(r,form){var k=r.toLowerCase();return form=='opp'?!m.op[k]:!m.pl[k]};
  var pl=ROLES.filter(function(r){return avail(r,'plain')}),oL=(gr||ROLES).filter(function(r){return avail(r,'opp')}).map(function(r){return'Opposition '+r}),o;
  if(opp)o=field=='primary'?oL:pl;else o=showOpp?pl.concat(oL):pl;
  if(field=='primary'&&!S.cands.some(function(x){return x.status=='active'&&x.primary=='Mayor'&&x.id!=exceptId}))o.unshift('Mayor');
@@ -331,11 +396,12 @@ function saveEdit(id){var c=S.cands.find(function(x){return x.id==id});
 function memberRow(c,assignable){
  if(editing==c.id){
   return'<div class="m"><div class="row" style="width:100%;margin:0"><input id="en_'+c.id+'" value="'+esc(c.name)+'"><input id="e1_'+c.id+'" list="dlp_'+c.id+'" value="'+esc(c.primary)+'" placeholder="Primary role"><input id="e2_'+c.id+'" list="dls_'+c.id+'" value="'+esc(c.secondary)+'" placeholder="Secondary role"><input id="enote_'+c.id+'" value="'+esc(c.notes)+'" placeholder="Notes (e.g. Former Mayor)"><datalist id="dlp_'+c.id+'">'+roleOpts(c.partyId,c.id,'primary')+'</datalist><datalist id="dls_'+c.id+'">'+roleOpts(c.partyId,c.id,'secondary')+'</datalist><select id="ep_'+c.id+'"><option value="">Unassigned</option>'+S.parties.map(function(p){return'<option value="'+p.id+'"'+(p.id==c.partyId?' selected':'')+'>'+esc(p.name)+'</option>'}).join('')+'</select><input type="file" id="ef_'+c.id+'" accept="image/*" title="New photo"><button class="p" onclick="saveEdit(\''+c.id+'\')">Save</button><button onclick="edit(null)">Cancel</button></div></div>'}
- var h='<div class="m"><div style="display:flex;gap:8px;align-items:center">'+av(c)+'<div><b>'+esc(c.name)+'</b>'+seatBadge(c)+leaderBadge(c)+'<br><small>'+esc(c.primary||'—')+(c.secondary?' / '+esc(c.secondary):'')+'</small>'+(c.log&&c.log.length?'<br><small class="mut">'+c.log.slice(-3).map(esc).join(' · ')+'</small>':'')+(c.notes?'<br><small class="mut">📝 '+esc(c.notes)+'</small>':'')+opp(c)+dupNote(c)+'</div></div><div class="row" style="margin:0">';
+ var h='<div class="m"><div style="display:flex;gap:8px;align-items:center">'+av(c)+'<div><b>'+esc(c.name)+'</b>'+seatBadge(c)+leaderBadge(c)+officeBadge(c)+'<br><small>'+esc(c.primary||'—')+(c.secondary?' / '+esc(c.secondary):'')+'</small>'+(c.log&&c.log.length?'<br><small class="mut">'+c.log.slice(-3).map(esc).join(' · ')+'</small>':'')+(c.notes?'<br><small class="mut">📝 '+esc(c.notes)+'</small>':'')+opp(c)+dupNote(c)+'</div></div><div class="row" style="margin:0">';
  if(assignable){h+='<select id="as'+c.id+'">'+S.parties.map(function(p){return'<option value="'+p.id+'">'+esc(p.name)+'</option>'}).join('')+'</select><button onclick="assign(\''+c.id+'\')">Assign</button>'}
  return h+(c.secondary?'<button onclick="swapRoles(\''+c.id+'\')" title="Swap primary and secondary roles">⇄ Swap</button>':'')+'<button onclick="edit(\''+c.id+'\')">Edit</button>'+(c.partyId?'<button onclick="releaseCand(\''+c.id+'\')" title="Move to the Unassigned pool">Release</button>':'')+'<select id="r'+c.id+'"><option>Death</option><option>Resigned</option><option>Retired</option></select><button class="d" onclick="rmCand(\''+c.id+'\')">Remove</button></div></div>'}
 
 function render(){
+ refreshRoleLists();$('rolesTbl').innerHTML=rolesView();$('officeRolesTbl').innerHTML=officeRolesView();
  $('ev').value=S.eligible||'';$('opp').innerHTML=oppView();$('parl').innerHTML=parlView();
  $('notices').innerHTML=(S.notices&&S.notices.length)?S.notices.slice().reverse().map(function(n){return'<div class="m"><div><span class="badge '+(n.type=='Death'?'b':'mut')+'">'+esc(n.type)+'</span> '+esc(n.text)+'</div><small class="mut">'+esc(n.date)+'</small></div>'}).join(''):'<span class="mut">No notices yet.</span>';
  var sp=S.cands.filter(function(c){return c.status=='active'&&(c.seat=='House'||c.seat=='Senate')}).sort(function(a,b){var pa=(party(a.partyId)||{}).name||'',pb=(party(b.partyId)||{}).name||'';return pa<pb?-1:pa>pb?1:a.name<b.name?-1:1}),sv=$('bs').value;
