@@ -77,7 +77,7 @@ textarea{font:inherit;color:var(--tx);background:var(--card);border:1px solid va
 <div id="v4" class="hide"><div class="card"><h2>Parliament</h2><div class="mut" style="margin-bottom:8px">Each party wins 1 seat per 10 votes (maximum 8). Its top vote-getters take the Senate seats (up to 4) automatically, and the Mayor always holds one of them. Any remaining seats are House seats, and the party chooses which of its other members fill them. Everyone else is Unseated and stays in the party until released to the Unassigned pool.</div><div id="parl"></div></div></div>
 
 <div id="v5" class="hide"><div class="card"><h2>Pass the bill</h2>
-<div class="mut" style="margin-bottom:8px">A bill starts in the House of Representatives. If the House passes it, it goes to the Senate, which can pass it, reject it, or pass it with an amendment that sends it back to the House. A bill that passes both houses goes to the Mayor, who assents (it becomes law) or vetoes it. Only members holding a seat can vote, and the Mayor has the casting vote in a tie.</div>
+<div class="mut" style="margin-bottom:8px">A bill starts in the House of Representatives. If the House passes it, it goes to the Senate, which can pass it, reject it, or pass it with an amendment that sends it back to the House. A bill that passes both houses goes to the Mayor, who assents (it becomes law) or vetoes it. Only members holding a seat can vote, and the Mayor has the casting vote in a tie. A defeated bill can be amended and returned to the House, and while the House is considering a revised bill or a Senate amendment it can request an amendment that sends the bill back to the Senate. Up to 3 amendment attempts are allowed, after which the bill stays Defeated.</div>
 <div class="row"><input id="bt" placeholder="Bill title" maxlength="120"></div>
 <div class="row"><textarea id="bd" rows="3" placeholder="What does this bill do?"></textarea></div>
 <div class="row"><select id="bs" onchange="syncBp()"></select><select id="bp"></select><button class="p" onclick="addBill()">Introduce in the House</button></div></div>
@@ -273,7 +273,7 @@ function advance(b,stg,passed){
  else if(stg=='House')b.stage='Senate';
  else if(stg=='Senate')b.stage=b.amend?'HouseAmend':'Mayor';
  else b.stage='Mayor';
- b.draft=null}
+ b.draft=null;b.request=''}
 function castVotes(id){var b=bill(id),d=b.draft,ch=d.ch,m=chMembers(ch);
  if(!m.length){alert('No members hold '+ch+' seats yet.');return}
  var f=0,a=0,x=0,cross=0,rec=[];
@@ -281,7 +281,7 @@ function castVotes(id){var b=bill(id),d=b.draft,ch=d.ch,m=chMembers(ch);
   if(v=='For')f++;else if(v=='Against')a++;else x++;if(cr)cross++;rec.push({n:c.name,p:pt?pt.name:'—',v:v,x:cr})});
  if(f+a==0){alert('At least one member must vote For or Against.');return}
  var stg=b.stage;if(stg=='Senate'&&d.amend.trim())b.amend=d.amend.trim();
- var r={stage:stg=='HouseAmend'?'House (amendment)':ch,date:today(),f:f,a:a,ab:x,cross:cross,votes:rec,result:f>a?'Passed':a>f?'Defeated':'Tied',cast:null};
+ var r={stage:stg=='HouseAmend'?'House (amendment)':ch,date:today(),round:b.attempts||0,f:f,a:a,ab:x,cross:cross,votes:rec,result:f>a?'Passed':a>f?'Defeated':'Tied',cast:null};
  b.record.push(r);
  if(r.result=='Tied'){b.pendingStage=stg;b.stage='Tie'}else advance(b,stg,r.result=='Passed');
  save()}
@@ -296,23 +296,42 @@ function votePanel(b){var ch=chOf(b),m=chMembers(ch);
  S.parties.forEach(function(p){var pm=m.filter(function(c){return c.partyId==p.id});if(!pm.length)return;
   h+='<div class="card" style="margin:6px 0;border-left:6px solid '+esc(p.color)+'"><div class="row" style="justify-content:space-between;margin:0"><b>'+esc(p.name)+'</b><label>Party line '+selHtml(d.stance[p.id],'setStance(\''+b.id+'\',\''+p.id+'\',this.value)')+'</label></div>'
    +pm.map(function(c){var v=d.votes[c.id]||'Abstain',line=d.stance[p.id],x=v!=line&&v!='Abstain'&&line!='Abstain';return'<div class="m"><span>'+esc(c.name)+' <small class="mut">'+esc(c.primary||'')+'</small>'+(x?' <span class="badge b">crossing the floor</span>':'')+'</span>'+selHtml(v,'setVote(\''+b.id+'\',\''+c.id+'\',this.value)')+'</div>'}).join('')+'</div>'});
- return h+'<div class="row"><button class="p" onclick="castVotes(\''+b.id+'\')">Cast votes</button></div>'}
+ return h+'<div class="row"><button class="p" onclick="castVotes(\''+b.id+'\')">Cast votes</button></div>'+reqUi(b)}
 function recordHtml(b){if(!b.record||!b.record.length)return'';
- return'<details style="margin-top:6px"><summary>Voting record</summary>'+b.record.map(function(r){return'<h3>'+esc(r.stage)+': '+r.f+' For, '+r.a+' Against, '+r.ab+' Abstain — '+esc(r.result)+(r.cast?' (Mayor casting vote: '+esc(r.cast)+')':'')+(r.cross?' · '+r.cross+' crossed the floor':'')+'</h3><div class="tw"><table><tr><th>Member</th><th>Party</th><th>Vote</th></tr>'+r.votes.map(function(v){return'<tr><td>'+esc(v.n)+'</td><td>'+esc(v.p)+'</td><td>'+esc(v.v)+(v.x?' <span class="badge b">crossed the floor</span>':'')+'</td></tr>'}).join('')+'</table></div>'}).join('')+'</details>'}
+ return'<details style="margin-top:6px"><summary>Voting record</summary>'+b.record.map(function(r){return'<h3>'+(r.round?'Round '+(r.round+1)+' · ':'')+esc(r.stage)+': '+r.f+' For, '+r.a+' Against, '+r.ab+' Abstain — '+esc(r.result)+(r.cast?' (Mayor casting vote: '+esc(r.cast)+')':'')+(r.cross?' · '+r.cross+' crossed the floor':'')+'</h3><div class="tw"><table><tr><th>Member</th><th>Party</th><th>Vote</th></tr>'+r.votes.map(function(v){return'<tr><td>'+esc(v.n)+'</td><td>'+esc(v.p)+'</td><td>'+esc(v.v)+(v.x?' <span class="badge b">crossed the floor</span>':'')+'</td></tr>'}).join('')+'</table></div>'}).join('')+'</details>'}
 function lawTools(b){var po=S.parties.map(function(p){return'<option value="'+p.id+'"'+(p.id==b.partyId?' selected':'')+'>'+esc(p.name)+'</option>'}).join('');
  return'<div class="row"><span class="mut">Election effect:</span><select id="bap_'+b.id+'">'+po+'</select><select id="bae_'+b.id+'"><option value="1">Gain votes</option><option value="-1">Lose votes</option></select><select id="baw_'+b.id+'"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option></select><button onclick="billAction(\''+b.id+'\')">Add as election action</button></div>'}
+var MAXR=3;
+function roundsLeft(b){return MAXR-(b.attempts||0)}
+function resubmitBill(id){var b=bill(id),el=$('rsa_'+id),t=((el&&el.value)||'').trim();
+ if(!b||b.stage!='Defeated'||roundsLeft(b)<=0)return;
+ if(!t){alert('Describe the amendment so the House can vote on the revised bill.');return}
+ b.attempts=(b.attempts||0)+1;(b.revs=b.revs||[]).push({n:b.attempts,date:today(),kind:'Amended and returned to the House',from:'defeated in the '+(b.where||'House'),text:t});
+ b.stage='House';b.where=null;b.amend='';b.request='';b.draft=null;save()}
+function houseRequest(id){var b=bill(id),el=$('hrq_'+id),t=((el&&el.value)||'').trim();
+ if(!b||(b.stage!='House'&&b.stage!='HouseAmend')||roundsLeft(b)<=0)return;
+ if(!t){alert('Describe the amendment the House is requesting from the Senate.');return}
+ b.attempts=(b.attempts||0)+1;(b.revs=b.revs||[]).push({n:b.attempts,date:today(),kind:'House requested an amendment, returned to the Senate',from:b.stage=='HouseAmend'?'responding to the Senate amendment':'on the revised bill',text:t});
+ b.request=t;b.amend='';b.stage='Senate';b.draft=null;save()}
+function reqUi(b){if(!((b.stage=='HouseAmend'||(b.stage=='House'&&(b.attempts||0)>0))&&roundsLeft(b)>0))return'';
+ return'<div class="row" style="margin-top:6px"><input id="hrq_'+b.id+'" placeholder="Or: the House requests an amendment (sent back to the Senate)" maxlength="200"><button onclick="houseRequest(\''+b.id+'\')">Request amendment: return to Senate</button></div><div class="mut">'+roundsLeft(b)+' of '+MAXR+' amendment attempts left.</div>'}
+function defeatedUi(b){var n=roundsLeft(b);
+ if(n<=0)return'<p class="b" style="margin:6px 0">Final defeat. All '+MAXR+' amendment attempts have been used.</p>';
+ return'<p class="mut" style="margin:6px 0">This bill can be amended and returned to the House to be voted on again ('+n+' of '+MAXR+' attempts left).</p><div class="row"><input id="rsa_'+b.id+'" placeholder="Describe the amendment to the bill" maxlength="200"><button class="p" onclick="resubmitBill(\''+b.id+'\')">Amend and return to the House</button></div>'}
+function revsHtml(b){var rv=b.revs||[];if(!rv.length)return'';
+ return'<details style="margin-top:6px"><summary>Amendment history ('+rv.length+' of '+MAXR+' attempts used)</summary>'+rv.map(function(r){return'<div class="m"><div><b>Attempt '+r.n+'</b> · '+esc(r.kind)+(r.from?' <small class="mut">('+esc(r.from)+')</small>':'')+'<br><small>'+esc(r.text)+'</small></div><small class="mut">'+esc(r.date)+'</small></div>'}).join('')+'</details>'}
 function billCard(b){var p=party(b.partyId),my=mayorC(),ST=['House','Senate','HouseAmend'];
  var h='<div class="card" style="margin:8px 0"><div class="row" style="justify-content:space-between;margin:0"><b>'+esc(b.no)+': '+esc(b.title)+'</b><span class="badge '+(b.stage=='Law'?'g':(b.stage=='Defeated'||b.stage=='Vetoed'?'b':'mut'))+'">'+esc(stageLabel(b))+'</span></div>'
  +'<div class="mut">'+esc(b.type)+' bill · '+esc(b.portfolio||'General')+' · Sponsor: '+esc(b.sponsor)+(p?' ('+esc(p.name)+')':'')+' · Introduced '+esc(b.date)+'</div>'
  +(b.desc?'<p style="margin:6px 0">'+esc(b.desc)+'</p>':'')
- +(b.amend?'<p class="mut" style="margin:6px 0">Senate amendment: '+esc(b.amend)+'</p>':'')
- +(b.record.length?'<div class="mut">'+b.record.map(function(r){return esc(r.stage)+' '+r.f+'–'+r.a+' '+(r.result=='Passed'?'✓':r.result=='Defeated'?'✗':'tied')}).join(' · ')+'</div>':'');
+ +(b.amend?'<p class="mut" style="margin:6px 0">Senate amendment: '+esc(b.amend)+'</p>':'')+(b.request&&b.stage=='Senate'?'<p class="mut" style="margin:6px 0">House request for amendment: '+esc(b.request)+'</p>':'')
+ +(b.record.length?'<div class="mut">'+b.record.map(function(r){return(r.round?'R'+(r.round+1)+' ':'')+esc(r.stage)+' '+r.f+'–'+r.a+' '+(r.result=='Passed'?'✓':r.result=='Defeated'?'✗':'tied')}).join(' · ')+'</div>':'');
  if(ST.indexOf(b.stage)>=0){if(!b.draft||b.draft.stage!=b.stage)initDraft(b);h+=votePanel(b)}
  if(b.stage=='Tie'){var r=b.record[b.record.length-1];h+='<p>The '+esc(r.stage)+' vote is tied '+r.f+'–'+r.a+'. The Mayor'+(my?' ('+esc(my.name)+')':'')+' has the casting vote.</p><div class="row"><button onclick="castingVote(\''+b.id+'\',\'For\')">Casting vote: For</button><button onclick="castingVote(\''+b.id+'\',\'Against\')">Casting vote: Against</button></div>'}
  if(b.stage=='Mayor')h+='<p class="mut" style="margin:6px 0">Passed both houses'+(b.amend?' with the amendment':'')+'. Waiting for the Mayor'+(my?' ('+esc(my.name)+')':'')+'.</p><div class="row"><button class="p" onclick="mayorDecide(\''+b.id+'\',true)">Mayor assents</button><button class="d" onclick="mayorDecide(\''+b.id+'\',false)">Mayor vetoes</button></div>';
  if(b.stage=='Law')h+='<p class="g" style="margin:6px 0">Assented'+(b.mayorName?' by '+esc(b.mayorName):'')+' on '+esc(b.decided)+'.</p>'+lawTools(b);
  if(b.stage=='Vetoed')h+='<p class="b" style="margin:6px 0">Vetoed'+(b.mayorName?' by '+esc(b.mayorName):'')+' on '+esc(b.decided)+'.</p>';
- return h+recordHtml(b)+'<div class="row" style="margin-top:6px"><button class="d" onclick="delBill(\''+b.id+'\')">Remove bill</button></div></div>'}
+ if(b.stage=='Defeated')h+=defeatedUi(b);return h+revsHtml(b)+recordHtml(b)+'<div class="row" style="margin-top:6px"><button class="d" onclick="delBill(\''+b.id+'\')">Remove bill</button></div></div>'}
 function billsView(){var all=bl();if(!all.length)return'<span class="mut">No bills yet. Introduce one above.</span>';
  var sec=function(t,l){return l.length?'<h3>'+t+' ('+l.length+')</h3>'+l.map(billCard).join(''):''};
  var fin=['Law','Defeated','Vetoed'];
