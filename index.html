@@ -292,7 +292,7 @@ function stageLabel(b){return{House:'In the House',Senate:'In the Senate',HouseA
 function votePanel(b){var ch=chOf(b),m=chMembers(ch);
  if(!m.length)return'<p class="mut">No members hold '+ch+' seats yet. Run an election and choose the House members first.</p>';
  var d=b.draft,h='<h3>'+(b.stage=='HouseAmend'?'House vote on the Senate amendment':ch+' vote')+'</h3>';
- if(b.stage=='Senate')h+='<div class="row"><input placeholder="Optional: pass with an amendment (describe the change)" value="'+esc(d.amend)+'" onchange="setAmend(\''+b.id+'\',this.value)"></div>';
+ if(b.stage=='Senate')h+='<div class="row"><textarea rows="4" maxlength="3000" placeholder="Optional: pass with an amendment (write the change in full)" oninput="setAmendLive(\''+b.id+'\',this.value)">'+esc(d.amend)+'</textarea></div>';
  S.parties.forEach(function(p){var pm=m.filter(function(c){return c.partyId==p.id});if(!pm.length)return;
   h+='<div class="card" style="margin:6px 0;border-left:6px solid '+esc(p.color)+'"><div class="row" style="justify-content:space-between;margin:0"><b>'+esc(p.name)+'</b><label>Party line '+selHtml(d.stance[p.id],'setStance(\''+b.id+'\',\''+p.id+'\',this.value)')+'</label></div>'
    +pm.map(function(c){var v=d.votes[c.id]||'Abstain',line=d.stance[p.id],x=v!=line&&v!='Abstain'&&line!='Abstain';return'<div class="m"><span>'+esc(c.name)+' <small class="mut">'+esc(c.primary||'')+'</small>'+(x?' <span class="badge b">crossing the floor</span>':'')+'</span>'+selHtml(v,'setVote(\''+b.id+'\',\''+c.id+'\',this.value)')+'</div>'}).join('')+'</div>'});
@@ -310,10 +310,10 @@ function setAm(id,i,v){var b=bill(id);if(!b)return;amList(b)[i]=v;persist()}
 function addAm(id){var b=bill(id);if(!b)return;var l=amList(b);if(l.length>=MAXA)return;l.push('');save()}
 function delAm(id,i){var b=bill(id);if(!b)return;amList(b).splice(i,1);save()}
 function amEditor(b){var l=amList(b),n=l.length,id=b.id,h='<h3>Amendments ('+n+' of '+MAXA+')</h3>';
- h+=n?l.map(function(t,i){return'<div class="row"><span class="mut" style="flex:none">'+(i+1)+'.</span><input value="'+esc(t)+'" maxlength="200" placeholder="Describe amendment '+(i+1)+'" oninput="setAm(\''+id+'\','+i+',this.value)"><button class="d" onclick="delAm(\''+id+'\','+i+')">Remove</button></div>'}).join(''):'<div class="mut">No amendments yet.</div>';
+ h+=n?l.map(function(t,i){return'<div class="row" style="align-items:flex-start"><span class="mut" style="flex:none;padding-top:6px">'+(i+1)+'.</span><textarea rows="4" maxlength="3000" style="flex:1 1 220px;width:auto" placeholder="Write amendment '+(i+1)+' in full" oninput="setAm(\''+id+'\','+i+',this.value)">'+esc(t)+'</textarea><button onclick="readAm(\''+id+'\','+i+')" title="Read this amendment aloud">🔊</button><button class="d" onclick="delAm(\''+id+'\','+i+')">Remove</button></div>'}).join(''):'<div class="mut">No amendments yet.</div>';
  return h+'<div class="row"><button onclick="addAm(\''+id+'\')"'+(n>=MAXA?' disabled':'')+'>+ Add amendment</button><span class="mut">Up to '+MAXA+' at a time. Review, edit or remove them before the vote.</span></div>'}
 function amRead(b){var it=amItems(b);if(!it.length)return'';if(b.stage=='House'||b.stage=='HouseAmend'||(b.stage=='Defeated'&&roundsLeft(b)>0))return'';
- return'<div class="mut" style="margin:6px 0">Amendments to the bill ('+it.length+' of '+MAXA+'):'+it.map(function(t,i){return'<br>'+(i+1)+'. '+esc(t)}).join('')+'</div>'}
+ return'<div class="mut" style="margin:6px 0;white-space:pre-wrap">Amendments to the bill ('+it.length+' of '+MAXA+'):'+it.map(function(t,i){return'<br>'+(i+1)+'. '+esc(t)}).join('')+'</div>'}
 function reqList(b){return(b.reqItems||[b.request]).map(function(t,i){return'<br>'+(i+1)+'. '+esc(t)}).join('')}
 function resubmitBill(id){var b=bill(id);
  if(!b||b.stage!='Defeated'||roundsLeft(b)<=0)return;
@@ -331,14 +331,42 @@ function defeatedUi(b){var n=roundsLeft(b);
  if(n<=0)return'<p class="b" style="margin:6px 0">Final defeat. All '+MAXR+' amendment attempts have been used.</p>';
  return'<p class="mut" style="margin:6px 0">This bill can be amended and returned to the House to be voted on again ('+n+' of '+MAXR+' attempts left).</p>'+amEditor(b)+'<div class="row"><button class="p" onclick="resubmitBill(\''+b.id+'\')">Amend and return to the House</button></div>'}
 function revsHtml(b){var rv=b.revs||[];if(!rv.length)return'';
- return'<details style="margin-top:6px"><summary>Amendment history ('+rv.length+' of '+MAXR+' attempts used)</summary>'+rv.map(function(r){return'<div class="m"><div><b>Attempt '+r.n+'</b> · '+esc(r.kind)+(r.from?' <small class="mut">('+esc(r.from)+')</small>':'')+(r.items||[r.text]).map(function(t,i){return'<br><small>'+(i+1)+'. '+esc(t)+'</small>'}).join('')+'</div><small class="mut">'+esc(r.date)+'</small></div>'}).join('')+'</details>'}
+ return'<details style="margin-top:6px"><summary>Amendment history ('+rv.length+' of '+MAXR+' attempts used)</summary>'+rv.map(function(r){return'<div class="m"><div><b>Attempt '+r.n+'</b> · '+esc(r.kind)+(r.from?' <small class="mut">('+esc(r.from)+')</small>':'')+(r.items||[r.text]).map(function(t,i){return'<br><small style="white-space:pre-wrap">'+(i+1)+'. '+esc(t)+'</small>'}).join('')+'</div><small class="mut">'+esc(r.date)+'</small></div>'}).join('')+'</details>'}
+function setAmendLive(id,v){var b=bill(id);if(b&&b.draft){b.draft.amend=v;persist()}}
+function speechOk(){return typeof window!=='undefined'&&'speechSynthesis' in window&&typeof SpeechSynthesisUtterance!=='undefined'}
+function stopRead(){if(speechOk())window.speechSynthesis.cancel()}
+function speak(text){if(!speechOk()){alert('This browser does not support reading aloud.');return}
+ var ss=window.speechSynthesis;ss.cancel();
+ var parts=String(text).replace(/\s+/g,' ').match(/[^.!?;:]+[.!?;:]*\s*/g)||[String(text)],chunks=[],cur='';
+ parts.forEach(function(x){if(cur&&(cur+x).length>180){chunks.push(cur);cur=x}else cur+=x});if(cur)chunks.push(cur);
+ chunks.forEach(function(c){ss.speak(new SpeechSynthesisUtterance(c))})}
+function amSpeech(b){var o=[],it=amItems(b);
+ if(it.length)o.push(it.length==1?'There is 1 amendment.':'There are '+it.length+' amendments.');
+ it.forEach(function(t,i){o.push('Amendment '+(i+1)+'. '+t)});
+ if(b.amend)o.push('Senate amendment. '+b.amend);
+ if(b.request&&b.stage=='Senate'){var r=b.reqItems||[b.request];o.push('The House has requested '+(r.length==1?'1 amendment':r.length+' amendments')+' from the Senate.');r.forEach(function(t,i){o.push('Requested amendment '+(i+1)+'. '+t)})}
+ return o}
+function readBill(id,mode){var b=bill(id);if(!b)return;var p=party(b.partyId),o=[(mode=='am'?'Amendments to ':'')+b.no+'. '+b.title+'.'];
+ if(mode=='am'){var a=amSpeech(b);if(!a.length)a=['There are no amendments on this bill.'];speak(o.concat(a).join(' '));return}
+ o.push('Sponsored by '+b.sponsor+(p?' of '+p.name:'')+'. This is a '+(b.type||'').toLowerCase()+' bill in the '+(b.portfolio||'General')+' portfolio. Introduced '+b.date+'.');
+ o.push(b.desc?'What the bill does. '+b.desc:'No description has been written for this bill.');
+ amSpeech(b).forEach(function(x){o.push(x)});
+ o.push('Current status. '+stageLabel(b)+'.');
+ if((b.attempts||0)>0)o.push('Amendment attempts used: '+b.attempts+' of '+MAXR+'.');
+ (b.record||[]).forEach(function(r){o.push((r.round?'Round '+(r.round+1)+'. ':'')+'The '+r.stage+' voted '+r.f+' for, '+r.a+' against, and '+r.ab+' abstained. '+(r.cast?'The Mayor used the casting vote: '+r.cast+'. ':'')+'Result: '+r.result+'.'+(r.cross?' '+r.cross+' members crossed the floor.':''))});
+ if(b.stage=='Law')o.push('This bill has become law'+(b.mayorName?', assented by '+b.mayorName:'')+'.');
+ if(b.stage=='Vetoed')o.push('The Mayor vetoed this bill.');
+ if(b.stage=='Defeated')o.push(roundsLeft(b)>0?'The bill was defeated but can still be amended and returned to the House. '+roundsLeft(b)+' attempts remain.':'This is a final defeat. No amendment attempts remain.');
+ speak(o.join(' '))}
+function readAm(id,i){var b=bill(id),t=b&&amList(b)[i];if(!t||!String(t).trim()){alert('That amendment is empty.');return}speak('Amendment '+(i+1)+'. '+t)}
+function readBar(b){return'<div class="row" style="margin-top:6px"><button onclick="readBill(\''+b.id+'\',\'bill\')">🔊 Read bill aloud</button><button onclick="readBill(\''+b.id+'\',\'am\')">🔊 Read amendments</button><button onclick="stopRead()">⏹ Stop</button></div>'}
 function billCard(b){var p=party(b.partyId),my=mayorC(),ST=['House','Senate','HouseAmend'];
  var h='<div class="card" style="margin:8px 0"><div class="row" style="justify-content:space-between;margin:0"><b>'+esc(b.no)+': '+esc(b.title)+'</b><span class="badge '+(b.stage=='Law'?'g':(b.stage=='Defeated'||b.stage=='Vetoed'?'b':'mut'))+'">'+esc(stageLabel(b))+'</span></div>'
  +'<div class="mut">'+esc(b.type)+' bill · '+esc(b.portfolio||'General')+' · Sponsor: '+esc(b.sponsor)+(p?' ('+esc(p.name)+')':'')+' · Introduced '+esc(b.date)+'</div>'
- +(b.desc?'<p style="margin:6px 0">'+esc(b.desc)+'</p>':'')
- +(b.amend?'<p class="mut" style="margin:6px 0">Senate amendment: '+esc(b.amend)+'</p>':'')+(b.request&&b.stage=='Senate'?'<div class="mut" style="margin:6px 0">House request for amendment:'+reqList(b)+'</div>':'')+amRead(b)
+ +(b.desc?'<p style="margin:6px 0;white-space:pre-wrap">'+esc(b.desc)+'</p>':'')
+ +(b.amend?'<p class="mut" style="margin:6px 0;white-space:pre-wrap">Senate amendment: '+esc(b.amend)+'</p>':'')+(b.request&&b.stage=='Senate'?'<div class="mut" style="margin:6px 0;white-space:pre-wrap">House request for amendment:'+reqList(b)+'</div>':'')+amRead(b)
  +(b.record.length?'<div class="mut">'+b.record.map(function(r){return(r.round?'R'+(r.round+1)+' ':'')+esc(r.stage)+' '+r.f+'–'+r.a+' '+(r.result=='Passed'?'✓':r.result=='Defeated'?'✗':'tied')}).join(' · ')+'</div>':'');
- if(ST.indexOf(b.stage)>=0){if(!b.draft||b.draft.stage!=b.stage)initDraft(b);h+=(b.stage=='Senate'?'':amEditor(b))+votePanel(b)}
+ h+=readBar(b);if(ST.indexOf(b.stage)>=0){if(!b.draft||b.draft.stage!=b.stage)initDraft(b);h+=(b.stage=='Senate'?'':amEditor(b))+votePanel(b)}
  if(b.stage=='Tie'){var r=b.record[b.record.length-1];h+='<p>The '+esc(r.stage)+' vote is tied '+r.f+'–'+r.a+'. The Mayor'+(my?' ('+esc(my.name)+')':'')+' has the casting vote.</p><div class="row"><button onclick="castingVote(\''+b.id+'\',\'For\')">Casting vote: For</button><button onclick="castingVote(\''+b.id+'\',\'Against\')">Casting vote: Against</button></div>'}
  if(b.stage=='Mayor')h+='<p class="mut" style="margin:6px 0">Passed both houses'+(b.amend?' with the amendment':'')+'. Waiting for the Mayor'+(my?' ('+esc(my.name)+')':'')+'.</p><div class="row"><button class="p" onclick="mayorDecide(\''+b.id+'\',true)">Mayor assents</button><button class="d" onclick="mayorDecide(\''+b.id+'\',false)">Mayor vetoes</button></div>';
  if(b.stage=='Law')h+='<p class="g" style="margin:6px 0">Assented'+(b.mayorName?' by '+esc(b.mayorName):'')+' on '+esc(b.decided)+'.</p>'+lawTools(b);
