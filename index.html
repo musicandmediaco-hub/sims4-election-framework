@@ -20,6 +20,11 @@ button.d{color:var(--bad)}input[type=color]{flex:0 0 44px;padding:2px;height:34p
 .bar{height:18px;border-radius:4px;margin:2px 0}.g{color:var(--good)}.b{color:var(--bad)}
 .tw{overflow-x:auto}table{border-collapse:collapse;width:100%}td,th{text-align:left;padding:4px 8px;border-bottom:1px solid var(--bd)}
 .badge{white-space:nowrap}
+a.bl{color:var(--ac);font-weight:600;text-decoration:underline;cursor:pointer}
+button.chip{border-radius:20px;padding:3px 12px}button.chip.on{background:var(--ac);color:#fff;border-color:var(--ac)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]) button.chip.on,:root:not([data-theme="light"]) button.p{color:#14171d}}
+:root[data-theme="dark"] button.chip.on{color:#14171d}
+tr.brow{cursor:pointer}tr.brow:hover{background:var(--bg)}
 .badge.mayor{background:var(--ac);color:#fff;border-color:var(--ac);font-weight:700;letter-spacing:.3px}
 .badge.deputy{border:2px solid var(--ac);color:var(--ac);font-weight:700}
 @media(prefers-color-scheme:dark){:root:not([data-theme="light"]) .badge.mayor{color:#14171d}}
@@ -87,7 +92,8 @@ textarea{font:inherit;color:var(--tx);background:var(--card);border:1px solid va
 
 <div id="v4" class="hide"><div class="card"><h2>Parliament</h2><div class="mut" style="margin-bottom:8px">Each party wins 1 seat per 10 votes (maximum 8). Its top vote-getters take the Senate seats (up to 4) automatically, and the Mayor always holds one of them. Any remaining seats are House seats, and the party chooses which of its other members fill them. Everyone else is Unseated and stays in the party until released to the Unassigned pool.</div><div id="parl"></div></div></div>
 
-<div id="v5" class="hide"><div class="card"><h2>Pass the bill</h2>
+<div id="v5" class="hide"><div class="card" id="btrack"><h2>Bill tracker</h2><div class="mut" style="margin-bottom:6px">Every bill and law in one place. Use a filter or the search box, and tap a row to jump to that bill. Amendment, repeal and reintroduction bills are linked to the bill they relate to.</div><div class="row" id="bsum"></div><div class="row"><input id="bq" placeholder="Search by title, number, sponsor or subject" oninput="setBQ(this.value)"></div><div class="tw" id="breg"></div></div>
+<div class="card"><h2>Pass the bill</h2>
 <div class="mut" style="margin-bottom:8px">A bill starts in the House of Representatives. If the House passes it, it goes to the Senate, which can pass it, reject it, or pass it with an amendment that sends it back to the House. A bill that passes both houses goes to the Mayor, who assents (it becomes law) or vetoes it. Only members holding a seat can vote, and the Mayor has the casting vote in a tie. A defeated bill can be amended and returned to the House, and while the House is considering a revised bill or a Senate amendment it can request an amendment that sends the bill back to the Senate. Up to 3 amendment attempts are allowed, after which the bill stays Defeated. Amendments are drafted as a list of up to 3 at a time, which can be reviewed, edited and removed while the bill is in the House. A law is never edited directly: to change or remove one you introduce an amendment bill or a repeal bill, which goes through the same stages. A bill that is finally defeated or vetoed has to come back as a new bill.</div>
 <div class="row"><label>Reading voice <select id="vs" onchange="setVoice(this.value)"></select></label><label>Speed <select id="vr" onchange="setRate(this.value)"><option value="0.75">Slow</option><option value="0.9">Relaxed</option><option value="1" selected>Normal</option><option value="1.1">Brisk</option><option value="1.25">Fast</option><option value="1.5">Very fast</option></select></label><button onclick="testVoice()">🔊 Test voice</button><button onclick="stopRead()">⏹ Stop</button></div>
 <div class="row"><input id="bt" placeholder="Bill title" maxlength="120"></div>
@@ -205,6 +211,7 @@ function leaderBadge(c){var p=party(c.partyId),g=govId(),st=p?pstat(p,g):'',seen
  if(isLeader(c))add('leader',st=='Opposition'?'Opposition Leader':st=='Crossbench'?'Crossbench Leader':'Party Leader',st=='Opposition'?'b strong':st=='Crossbench'?'strong':'g');
  return h}
 function reconcile(){var d0=new Date().toLocaleDateString(),have=!!mayorC();
+ (S.bills||[]).forEach(function(b){if(b.stage=='Law'&&b.amendedBy&&b.amendedBy.length&&b.origDesc==null)consolidate(b)});
  S.cands.forEach(function(c){var pm=String(c.primary||'').trim().toLowerCase()=='mayor',sm=String(c.secondary||'').trim().toLowerCase()=='mayor';if(!pm&&!sm)return;
   var L=c.log=c.log||[];if(c.status=='active'&&!have){c.mayor=true;have=true}
   if(pm){var own=(c.secondary&&!sm&&!/^Opposition /i.test(c.secondary))?c.secondary:'';L.push(d0+' Primary: Mayor → '+(own||'none')+' (Mayor is now a badge, not a role)');c.primary=own;c.secondary=''}
@@ -444,15 +451,13 @@ function amSpeech(b){var o=[],it=amItems(b);
 function readBill(id,mode){var b=bill(id);if(!b)return;var p=party(b.partyId),o=[(mode=='am'?'Amendments to ':'')+b.no+'. '+b.title+'.'];
  if(mode=='am'){var a=amSpeech(b);if(!a.length)a=['There are no amendments on this bill.'];speak(o.concat(a).join(' '));return}
  o.push('Sponsored by '+b.sponsor+(p?' of '+p.name:'')+'. This is a '+(b.type||'').toLowerCase()+' bill in the '+(b.portfolio||'General')+' portfolio. Introduced '+b.date+'.');
- o.push(b.desc?'What the bill does. '+b.desc:'No description has been written for this bill.');
+ o.push(b.desc?(b.amendedBy&&b.amendedBy.length?'The current text of the law, as amended. ':'What the bill does. ')+b.desc:'No description has been written for this bill.');
  amSpeech(b).forEach(function(x){o.push(x)});
+ if(b.fromId)o.push('This bill is a reintroduction of '+(b.fromNo||'')+', '+(b.fromTitle||'')+'.');
  if(b.parentId&&b.kind)o.push((b.kind=='Amendment'?'This is an amendment bill that changes ':b.kind=='Repeal'?'This is a repeal bill that would repeal ':'This bill is reintroduced from ')+(b.parentNo||'')+', '+(b.parentTitle||'')+'.');
- if(b.amendedBy&&b.amendedBy.length){o.push('This law has been amended '+b.amendedBy.length+(b.amendedBy.length==1?' time.':' times.'));b.amendedBy.forEach(function(a,i){o.push('Amendment '+(i+1)+', '+a.no+', passed '+a.date+'. '+a.changes)})}
- if(b.repealed)o.push('This law has been repealed'+(b.repealedBy?' by '+b.repealedBy.no:'')+' and is no longer in force.');
- if(b.parentId&&b.kind)o.push((b.kind=='Amendment'?'This is an amendment bill for ':b.kind=='Repeal'?'This is a repeal bill for ':'This is a reintroduction of ')+(b.parentNo||'')+', '+(b.parentTitle||'')+'.');
  o.push('Current status. '+stageLabel(b)+'.');
  if(b.stage=='Law'){if(b.repealed)o.push('This law has been repealed'+(b.repealedBy?' by '+b.repealedBy.no+' on '+b.repealedBy.date:'')+' and is no longer in force.');else o.push('This law is in force'+((b.amendedBy||[]).length?', as amended '+b.amendedBy.length+(b.amendedBy.length==1?' time':' times'):'')+'.');
-  (b.amendedBy||[]).forEach(function(a){o.push('Amended by '+a.no+' on '+a.date+'. '+(a.changes||''))})}
+  }
  if(b.reintroducedAs)o.push('This bill was reintroduced as '+b.reintroducedAs+'.');
  if((b.attempts||0)>0)o.push('Amendment attempts used: '+b.attempts+' of '+MAXR+'.');
  (b.record||[]).forEach(function(r){o.push((r.round?'Round '+(r.round+1)+'. ':'')+'The '+r.stage+' voted '+r.f+' for, '+r.a+' against, and '+r.ab+' abstained. '+(r.cast?'The Mayor used the casting vote: '+r.cast+'. ':'')+'Result: '+r.result+'.'+(r.cross?' '+r.cross+' members crossed the floor.':''))});
@@ -492,20 +497,35 @@ function amendLaw(id,kind){var b=bill(id),ss=$('lw_s_'+id),tt=$('lw_t_'+id);if(!
  d=kind=='Repeal'?'Repeals '+b.no+' ('+b.title+').'+(t?' Reason: '+t:''):'Amends '+b.no+' ('+b.title+'). Changes: '+t,
  nb=newBill(title,d,sid,b.portfolio,{kind:kind,parentId:b.id,parentNo:b.no,parentTitle:b.title,changes:t});
  if(nb){save();alert('Introduced as '+nb.no+' in the House. '+b.no+' stays in force as written until this bill becomes law.')}}
+function amendLines(b){var ln=[];if(b.changes)ln.push(b.changes);amItems(b).forEach(function(t){ln.push(t)});if(b.amend)ln.push('Senate amendment: '+b.amend);if(!ln.length&&b.desc)ln.push(b.desc);return ln}
+function amendBlock(a){var l=(a.lines&&a.lines.length)?a.lines:[a.changes||''];return'\n\nAmended by '+a.no+' ('+a.date+'):\n'+l.map(function(t,i){return l.length>1?(i+1)+'. '+t:t}).join('\n')}
+function consolidate(p,a){if(p.origDesc==null)p.origDesc=p.desc||'';p.desc=((p.desc||'')+amendBlock(a)).replace(/^\n+/,'')}
+function saveText(id){var b=bill(id),el=$('ct_'+id);if(!b||!el)return;b.desc=el.value.trim();b.textEdited=today();save()}
 function applyLaw(b){if(!b.parentId||!b.kind)return;var p=bill(b.parentId);if(!p||p.stage!='Law')return;
- if(b.kind=='Amendment')(p.amendedBy=p.amendedBy||[]).push({id:b.id,no:b.no,title:b.title,date:today(),changes:b.changes||b.desc});
+ if(b.kind=='Amendment'){if(p.repealed){noteAdd('Law',b.no+' became law, but '+p.no+' had already been repealed, so nothing was changed.');return}
+  var ent={id:b.id,no:b.no,title:b.title,date:today(),changes:b.changes||b.desc,lines:amendLines(b)};(p.amendedBy=p.amendedBy||[]).push(ent);consolidate(p,ent)}
  else if(b.kind=='Repeal'){p.repealed=true;p.repealedBy={id:b.id,no:b.no,date:today()}}}
 function reintroBill(id){var b=bill(id),ss=$('ri_s_'+id),sid=ss&&ss.value;if(!b)return;
  if(!sid){alert('Choose a sponsor. Only members holding a Senate or House seat can sponsor a bill.');return}
- var nb=newBill(b.title,b.desc,sid,b.portfolio,{kind:'Reintroduction',parentId:b.id,parentNo:b.no,parentTitle:b.title});
- if(nb){b.reintroducedAs=nb.no;save();alert('Introduced as '+nb.no+' in the House.')}}
-function linkLine(b){if(!b.parentId||!b.kind)return'';var t=b.kind=='Amendment'?'Amendment bill: changes ':b.kind=='Repeal'?'Repeal bill: would repeal ':'Reintroduced from ';
- return'<div class="mut" style="margin:4px 0">'+t+esc(b.parentNo||'')+(b.parentTitle?' ('+esc(b.parentTitle)+')':'')+'</div>'}
+ var keep=(b.kind=='Amendment'||b.kind=='Repeal')&&bill(b.parentId),
+ nb=newBill(b.title,b.desc,sid,b.portfolio,keep?{kind:b.kind,parentId:b.parentId,parentNo:b.parentNo,parentTitle:b.parentTitle,changes:b.changes,fromId:b.id,fromNo:b.no,fromTitle:b.title}:{kind:'Reintroduction',parentId:b.id,parentNo:b.no,parentTitle:b.title});
+ if(nb){b.reintroducedAs=nb.no;(b.reints=b.reints||[]).push({id:nb.id,no:nb.no});save();alert('Introduced as '+nb.no+' in the House.')}}
+var BF='all',BQ='',OB={};
+function bref(id,txt){var x=bill(id);return x?'<a class="bl" href="#" onclick="event.stopPropagation();goBill(\''+id+'\');return false">'+esc(txt||x.no)+'</a>':esc(txt||'')}
+function shortStage(b){return{House:'House',HouseAmend:'House',Senate:'Senate',Mayor:'Mayor',Tie:'Tied',Law:b.repealed?'Repealed':'Law',Defeated:'Defeated',Vetoed:'Vetoed'}[b.stage]||b.stage}
+function stageCls(b){return b.stage=='Law'?(b.repealed?'mut':'g'):(b.stage=='Defeated'||b.stage=='Vetoed')?'b':'mut strong'}
+function children(b){return bl().filter(function(x){return x.kind&&(x.parentId==b.id||x.fromId==b.id)})}
+function relWord(x,b){return x.fromId==b.id?'Reintroduced as':x.kind=='Amendment'?'Amendment bill':x.kind=='Repeal'?'Repeal bill':'Reintroduced as'}
+function relatedHtml(b){var h='';
+ if(b.parentId&&b.kind){var P=bill(b.parentId),v=b.kind=='Amendment'?'Amendment bill: changes the law ':b.kind=='Repeal'?'Repeal bill: would repeal the law ':'Reintroduction of ';
+  h+='<div class="mut" style="margin:4px 0">'+v+bref(b.parentId,(b.parentNo||'')+(b.parentTitle?': '+b.parentTitle:''))+(P?' <span class="badge '+stageCls(P)+'">'+esc(stageLabel(P))+'</span>':'')+'</div>'}
+ if(b.fromId){var F=bill(b.fromId);h+='<div class="mut" style="margin:4px 0">Reintroduction of '+bref(b.fromId,(b.fromNo||'')+(b.fromTitle?': '+b.fromTitle:''))+(F?' <span class="badge '+stageCls(F)+'">'+esc(stageLabel(F))+'</span>':'')+'</div>'}
+ children(b).forEach(function(x){var v=relWord(x,b);
+  h+='<div class="mut" style="margin:4px 0">'+v+': '+bref(x.id,x.no+': '+x.title)+' <span class="badge '+stageCls(x)+'">'+esc(stageLabel(x))+'</span></div>'});
+ return h}
 function lawStatus(b){var h='',ab=b.amendedBy||[];
- h+=b.repealed?'<p class="b" style="margin:6px 0">Repealed by '+esc((b.repealedBy||{}).no||'a repeal bill')+(b.repealedBy?' on '+esc(b.repealedBy.date):'')+'. No longer in force.</p>':'<p class="g" style="margin:6px 0">In force'+(ab.length?', as amended '+ab.length+(ab.length==1?' time':' times'):'')+'.</p>';
- if(ab.length)h+='<div class="mut" style="margin:6px 0;white-space:pre-wrap">Amendments to this law:'+ab.map(function(a){return'<br>'+esc(a.no)+' · '+esc(a.date)+' · '+esc(a.changes)}).join('')+'</div>';
- var pend=bl().filter(function(x){return x.parentId==b.id&&x.kind&&x.kind!='Reintroduction'&&['Law','Defeated','Vetoed'].indexOf(x.stage)<0});
- if(pend.length)h+='<div class="mut" style="margin:6px 0">Pending: '+pend.map(function(x){return esc(x.no)+' ('+esc(x.kind.toLowerCase())+', '+esc(stageLabel(x).toLowerCase())+')'}).join(', ')+'</div>';
+ h+=b.repealed?'<p class="b" style="margin:6px 0">Repealed by '+bref((b.repealedBy||{}).id,(b.repealedBy||{}).no||'a repeal bill')+(b.repealedBy?' on '+esc(b.repealedBy.date):'')+'. No longer in force.</p>':'<p class="g" style="margin:6px 0">In force'+(ab.length?', as amended '+ab.length+(ab.length==1?' time':' times'):'')+'.</p>';
+ if(ab.length)h+='<div class="mut" style="margin:6px 0;white-space:pre-wrap">Amendments to this law:'+ab.map(function(a){return'<br>'+bref(a.id,a.no)+' · '+esc(a.date)+' · '+esc(a.changes)}).join('')+'</div>'+'<details style="margin:6px 0"><summary>Edit the current text</summary><div class="mut" style="margin:4px 0">The amendments above are added to the end of the law. Tidy the wording here if you want it to read as one text. The original text and the amendment list are kept.</div><textarea id="ct_'+b.id+'" rows="6" maxlength="8000">'+esc(b.desc||'')+'</textarea><div class="row" style="margin-top:4px"><button class="p" onclick="saveText(\''+b.id+'\')">Save current text</button></div></details>'+(b.origDesc!=null?'<details style="margin:6px 0"><summary>Original text, as first passed</summary><div class="mut" style="white-space:pre-wrap;margin-top:4px">'+(b.origDesc?esc(b.origDesc):'(no description)')+'</div></details>':'');
  return h}
 function lawForm(b){if(b.repealed)return'';var so=sponsorOpts(b.portfolio);
  return'<details style="margin-top:6px"><summary>Change or repeal this law</summary><p class="mut" style="margin:6px 0">A law is not edited directly. To change it, introduce an amendment bill. To remove it, introduce a repeal bill. Either one goes through the House, the Senate and the Mayor like any other bill, and this law stays in force as written until it passes.</p>'+(so?'<div class="row"><select id="lw_s_'+b.id+'" title="Sponsor: must hold the '+esc(b.portfolio||'General')+' role">'+so+'</select></div><div class="row"><textarea id="lw_t_'+b.id+'" rows="3" maxlength="3000" placeholder="What does the amendment change? (For a repeal, an optional reason)"></textarea></div><div class="row"><button class="p" onclick="amendLaw(\''+b.id+'\',\'Amendment\')">Introduce amendment bill</button><button class="d" onclick="amendLaw(\''+b.id+'\',\'Repeal\')">Introduce repeal bill</button></div>':noSponsorMsg(b.portfolio))+'</details>'}
@@ -514,7 +534,7 @@ function reintroUi(b){var so=sponsorOpts(b.portfolio);
 function billCard(b){var p=party(b.partyId),my=mayorC(),ST=['House','Senate','HouseAmend'];
  var h='<div class="card" style="margin:8px 0"><div class="row" style="justify-content:space-between;margin:0"><b>'+esc(b.no)+': '+esc(b.title)+'</b><span class="badge '+(b.stage=='Law'?(b.repealed?'mut':'g'):(b.stage=='Defeated'||b.stage=='Vetoed'?'b':'mut'))+'">'+esc(stageLabel(b))+'</span></div>'
  +'<div class="mut">'+esc(b.type)+' bill · '+esc(b.portfolio||'General')+' · Sponsor: '+esc(b.sponsor)+(p?' ('+esc(p.name)+')':'')+' · Introduced '+esc(b.date)+'</div>'
- +linkLine(b)+(b.desc?'<p style="margin:6px 0;white-space:pre-wrap">'+esc(b.desc)+'</p>':'')
+ +relatedHtml(b)+(b.amendedBy&&b.amendedBy.length?'<div class="mut" style="margin-top:6px"><span class="badge deputy">Current text, as amended</span></div>':'')+(b.desc?'<p style="margin:6px 0;white-space:pre-wrap">'+esc(b.desc)+'</p>':'')
  +(b.amend?'<p class="mut" style="margin:6px 0;white-space:pre-wrap">Senate amendment: '+esc(b.amend)+'</p>':'')+(b.request&&b.stage=='Senate'?'<div class="mut" style="margin:6px 0;white-space:pre-wrap">House request for amendment:'+reqList(b)+'</div>':'')+amRead(b)
  +(b.record.length?'<div class="mut">'+b.record.map(function(r){return(r.round?'R'+(r.round+1)+' ':'')+esc(r.stage)+' '+r.f+'–'+r.a+' '+(r.result=='Passed'?'✓':r.result=='Defeated'?'✗':'tied')}).join(' · ')+'</div>':'');
  h+=readBar(b);if(ST.indexOf(b.stage)>=0){if(!b.draft||b.draft.stage!=b.stage)initDraft(b);h+=(b.stage=='Senate'?'':amEditor(b))+votePanel(b)}
@@ -523,10 +543,32 @@ function billCard(b){var p=party(b.partyId),my=mayorC(),ST=['House','Senate','Ho
  if(b.stage=='Law')h+='<p class="g" style="margin:6px 0">Assented'+(b.mayorName?' by '+esc(b.mayorName):'')+' on '+esc(b.decided)+'.</p>'+lawStatus(b)+lawTools(b)+lawForm(b);
  if(b.stage=='Vetoed')h+='<p class="b" style="margin:6px 0">Vetoed'+(b.mayorName?' by '+esc(b.mayorName):'')+' on '+esc(b.decided)+'.</p>';
  if(b.stage=='Defeated')h+=defeatedUi(b);if(b.stage=='Vetoed'||(b.stage=='Defeated'&&roundsLeft(b)<=0))h+=reintroUi(b);return h+revsHtml(b)+recordHtml(b)+'<div class="row" style="margin-top:6px"><button class="d" onclick="delBill(\''+b.id+'\')">Remove bill</button></div></div>'}
+function bCat(b){var t=b.stage;return t=='House'||t=='HouseAmend'?'house':t=='Senate'?'senate':(t=='Mayor'||t=='Tie')?'mayor':t=='Law'?(b.repealed?'repealed':'law'):'closed'}
+function bMatch(b,ignoreQ){var c=bCat(b),f=BF;if(!(f=='all'||(f=='active'&&(c=='house'||c=='senate'||c=='mayor'))||c==f))return false;
+ if(BQ&&!ignoreQ){var hay=[b.no,b.title,b.sponsor,b.portfolio,b.type,b.kind,stageLabel(b)].join(' ').toLowerCase();if(hay.indexOf(BQ)<0)return false}return true}
+function setBF(f){BF=f;trackerRender();$('bills').innerHTML=billsView()}
+function setBQ(v){BQ=String(v||'').trim().toLowerCase();trackerRender();$('bills').innerHTML=billsView()}
+function goBill(id){BF='all';BQ='';if($('bq'))$('bq').value='';OB[id]=true;trackerRender();$('bills').innerHTML=billsView();
+ var e=$('bc_'+id);if(e){if(e.tagName=='DETAILS')e.open=true;if(e.scrollIntoView)e.scrollIntoView({behavior:'smooth',block:'start'});e.style.outline='3px solid var(--ac)';e.style.borderRadius='8px';setTimeout(function(){e.style.outline=''},1800)}}
+function trackerRender(){var all=bl(),cnt={all:all.length,active:0,house:0,senate:0,mayor:0,law:0,repealed:0,closed:0};
+ all.forEach(function(b){var c=bCat(b);cnt[c]++;if(c=='house'||c=='senate'||c=='mayor')cnt.active++});
+ var chips=[['all','All'],['active','In progress'],['house','In the House'],['senate','In the Senate'],['mayor','With the Mayor'],['law','Laws in force'],['repealed','Repealed'],['closed','Defeated / vetoed']];
+ $('bsum').innerHTML=chips.map(function(c){return'<button class="chip'+(BF==c[0]?' on':'')+'" onclick="setBF(\''+c[0]+'\')">'+c[1]+' ('+cnt[c[0]]+')</button>'}).join('');
+ var ord={House:1,HouseAmend:2,Senate:3,Tie:4,Mayor:5,Law:6,Defeated:8,Vetoed:8},list=all.map(function(b,i){return{b:b,i:i}}).filter(function(x){return bMatch(x.b)}).sort(function(a,b){var oa=ord[a.b.stage]+(a.b.repealed?1:0),ob=ord[b.b.stage]+(b.b.repealed?1:0);return oa-ob||a.i-b.i});
+ if(!all.length){$('breg').innerHTML='<span class="mut">No bills yet. Introduce one below.</span>';return}
+ if(!list.length){$('breg').innerHTML='<span class="mut">No bills match.</span>';return}
+ $('breg').innerHTML='<table><tr><th>Bill</th><th>Title</th><th>Subject</th><th>Sponsor</th><th>Status</th><th>Related</th></tr>'+list.map(function(x){var b=x.b,rel=[];
+  if(b.parentId&&b.kind)rel.push((b.kind=='Amendment'?'Amends ':b.kind=='Repeal'?'Repeals ':'Reintroduces ')+bref(b.parentId,b.parentNo));
+  if(b.fromId)rel.push('Reintroduces '+bref(b.fromId,b.fromNo));
+  var ch=children(b);if(ch.length)rel.push(ch.map(function(c){return(c.fromId==b.id?'Reintroduced as ':c.kind=='Amendment'?'Amended by ':c.kind=='Repeal'?'Repeal bill ':'Reintroduced as ')+bref(c.id,c.no)+' ('+shortStage(c)+')'}).join('<br>'));
+  return'<tr class="brow" onclick="goBill(\''+b.id+'\')"><td><b>'+esc(b.no)+'</b></td><td>'+esc(b.title)+'</td><td>'+esc(b.portfolio||'General')+'</td><td>'+esc(b.sponsor||'')+'</td><td><span class="badge '+stageCls(b)+'">'+esc(stageLabel(b))+'</span></td><td>'+(rel.join('<br>')||'<span class="mut">—</span>')+'</td></tr>'}).join('')+'</table>'}
 function billsView(){var all=bl();if(!all.length)return'<span class="mut">No bills yet. Introduce one above.</span>';
- var sec=function(t,l){return l.length?'<h3>'+t+' ('+l.length+')</h3>'+l.map(billCard).join(''):''};
- var fin=['Law','Defeated','Vetoed'];
- return sec('In progress',all.filter(function(b){return fin.indexOf(b.stage)<0}))+sec('Laws passed',all.filter(function(b){return b.stage=='Law'&&!b.repealed}))+sec('Repealed laws',all.filter(function(b){return b.stage=='Law'&&b.repealed}))+sec('Defeated and vetoed',all.filter(function(b){return b.stage=='Defeated'||b.stage=='Vetoed'}))}
+ var list=all.filter(function(b){return bMatch(b)});if(!list.length)return'<span class="mut">No bills match this filter. Use the filters at the top to change it.</span>';
+ var fin=['Law','Defeated','Vetoed'],
+ wrap=function(b){if(fin.indexOf(b.stage)<0)return'<div id="bc_'+b.id+'">'+billCard(b)+'</div>';
+  return'<details id="bc_'+b.id+'"'+(OB[b.id]===true?' open':'')+' ontoggle="OB[\''+b.id+'\']=this.open" style="margin:8px 0"><summary style="cursor:pointer;padding:6px 0"><b>'+esc(b.no)+': '+esc(b.title)+'</b> <span class="badge '+stageCls(b)+'">'+esc(stageLabel(b))+'</span> <small class="mut">'+esc(b.portfolio||'General')+'</small></summary>'+billCard(b)+'</details>'},
+ sec=function(t,l){return l.length?'<h3>'+t+' ('+l.length+')</h3>'+l.map(wrap).join(''):''};
+ return sec('In progress',list.filter(function(b){return fin.indexOf(b.stage)<0}))+sec('Laws passed',list.filter(function(b){return b.stage=='Law'&&!b.repealed}))+sec('Repealed laws',list.filter(function(b){return b.stage=='Law'&&b.repealed}))+sec('Defeated and vetoed',list.filter(function(b){return b.stage=='Defeated'||b.stage=='Vetoed'}))}
 var lastBs=null;
 function syncBp(){fillSubjects();lastBs=$('bs').value}
 function rbase(r){return(r||'').trim().replace(/\s+/g,' ').replace(/^opposition /i,'').toLowerCase()}
@@ -624,7 +666,7 @@ function render(){
  $('ev').value=S.eligible||'';$('opp').innerHTML=oppView();$('parl').innerHTML=parlView();
  $('notices').innerHTML=(S.notices&&S.notices.length)?S.notices.slice().reverse().map(function(n){return'<div class="m"><div><span class="badge '+(n.type=='Death'?'b':'mut')+'">'+esc(n.type)+'</span> '+esc(n.text)+'</div><small class="mut">'+esc(n.date)+'</small></div>'}).join(''):'<span class="mut">No notices yet.</span>';
  fillBillForm();
- $('bills').innerHTML=billsView();
+ $('bills').innerHTML=billsView();trackerRender();
  $('fees').innerHTML=S.parties.length?S.parties.map(function(p){var f=fee(p.id);return'<div class="m"><div><b style="color:'+esc(p.color)+'">'+esc(p.name)+'</b>'+(members(p.id).length<MAX?' <small class="b">Not eligible: '+members(p.id).length+'/'+MAX+' members</small>':'')+'</div><div class="row" style="margin:0"><label><input type="checkbox" style="flex:none"'+(f.paid?' checked':'')+' onchange="setFee(\''+p.id+'\',\'paid\',this.checked)"> Paid</label><input type="number" min="0" step="any" placeholder="Fee amount" style="flex:0 1 120px" value="'+(f.amount==null?'':f.amount)+'" onchange="setFee(\''+p.id+'\',\'amount\',this.value)"><input type="date" style="flex:0 1 150px" value="'+esc(f.date)+'" onchange="setFee(\''+p.id+'\',\'date\',this.value)"></div></div>'}).join(''):'<span class="mut">Add parties first.</span>';
  var opts=S.parties.map(function(p){return'<option value="'+p.id+'">'+esc(p.name)+' ('+members(p.id).length+'/'+MAX+')</option>'}).join('');
  var cur=$('cp').value;$('cp').innerHTML='<option value="">Unassigned</option>'+opts;$('cp').value=cur;$('dlp_new').innerHTML=roleOpts($('cp').value||null,null,'primary');$('dls_new').innerHTML=roleOpts($('cp').value||null,null,'secondary');
