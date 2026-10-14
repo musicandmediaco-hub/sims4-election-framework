@@ -48,7 +48,7 @@ textarea{font:inherit;color:var(--tx);background:var(--card);border:1px solid va
  <div class="card"><h2>Add party</h2><div class="row"><input id="pn" placeholder="Party name"><input type="color" id="pc" value="#3b5bdb"><button class="p" onclick="addParty()">Add party</button></div></div>
  <div class="card"><h2>Add candidate</h2>
   <div class="row"><input id="cn" placeholder="Name"><select id="cp" onchange="render()"></select></div>
-  <div class="row"><input id="c1" list="dlp_new" placeholder="Primary role"><input id="c2" list="dls_new" placeholder="Secondary role"><input type="file" id="cf" accept="image/*" title="Photo"><button class="p" onclick="addCand()">Add</button></div>
+  <div class="row"><input id="c1" list="dlp_new" placeholder="Primary role"><input id="c2" list="dls_new" placeholder="Secondary role"><input type="file" id="cf" accept="image/*" title="Photo"><label class="mut" style="flex:none;display:flex;gap:4px;align-items:center"><input type="checkbox" id="cmay" style="flex:none"> Mayor</label><button class="p" onclick="addCand()">Add</button></div>
   <datalist id="roles"></datalist><datalist id="dlp_new"></datalist><datalist id="dls_new"></datalist>
  </div>
  <div class="grid" id="parties"></div>
@@ -113,7 +113,7 @@ var ROLES=[],OFFICE=[],DEF_OFFICE=['Treasurer'];
 function syncRoles(){ROLES.length=0;OFFICE.length=0;(Array.isArray(S.roles)?S.roles:DEF_ROLES).forEach(function(r){ROLES.push(r)});(Array.isArray(S.officeRoles)?S.officeRoles:DEF_OFFICE).forEach(function(r){OFFICE.push(r)})}
 syncRoles();
 function refreshRoleLists(){
- document.getElementById('roles').innerHTML=['Mayor','Former Mayor'].concat(ROLES,ROLES.map(function(r){return'Opposition '+r})).map(function(r){return'<option>'+esc(r)+'</option>'}).join('');
+ document.getElementById('roles').innerHTML=['Former Mayor'].concat(ROLES,ROLES.map(function(r){return'Opposition '+r})).map(function(r){return'<option>'+esc(r)+'</option>'}).join('');
  var bp=document.getElementById('bp'),v=bp.value;
  bp.innerHTML=['General'].concat(ROLES).map(function(r){return'<option>'+esc(r)+'</option>'}).join('');
  bp.value=v;if(bp.value!==v)bp.value='General'}
@@ -193,18 +193,27 @@ function pickHouse(pid){var p=party(pid),ids=[].slice.call(document.querySelecto
  S.cands.forEach(function(c){if(c.status=='active'&&c.partyId==pid&&c.seat!='Senate')c.seat=ids.indexOf(c.id)>=0?'House':'Unseated'});p.hs.done=true;save()}
 function repick(pid){var p=party(pid);S.cands.forEach(function(c){if(c.status=='active'&&c.partyId==pid&&c.seat!='Senate'&&c.votes!=null)c.seat=null});p.hs.done=false;save()}
 function isLeader(c){var p=party(c.partyId);return !!p&&p.leaderId==c.id}
+function titleMsg(r){var k=String(r||'').trim().toLowerCase().replace(/\s+/g,' ');
+ if(k=='mayor')return'Mayor is not a role. Tick the Mayor box for this person instead. Their ministry stays as their role.';
+ if(labelRole(r))return'Deputy Mayor and Interim Mayor are not roles. The Deputy Mayor is chosen by a party vote on the Parliament tab and shows as a label.';return''}
 function labelRole(r){var k=String(r||'').trim().toLowerCase().replace(/\s+/g,' ');return k=='deputy mayor'||k=='interim mayor'||k=='opposition deputy mayor'}
-function isDeputy(c){var p=party(c.partyId);return !!p&&p.deputyId==c.id&&p.id==govId()&&c.primary!='Mayor'}
+function isDeputy(c){var p=party(c.partyId);return !!p&&p.deputyId==c.id&&p.id==govId()&&!c.mayor}
 function leaderBadge(c){var p=party(c.partyId),g=govId(),st=p?pstat(p,g):'',seen={},h='';
  var add=function(k,t,cls){if(seen[k])return;seen[k]=1;h+=' <span class="badge '+cls+'">'+t+'</span>'};
- if(c.primary=='Mayor')add('mayor',c.interim?'Interim Mayor':'Mayor','mayor');
+ if(c.mayor)add('mayor',c.interim?'Interim Mayor':'Mayor','mayor');
  if(isDeputy(c))add('deputy','Deputy Mayor','deputy');
  if(isLeader(c))add('leader',st=='Opposition'?'Opposition Leader':st=='Crossbench'?'Crossbench Leader':'Party Leader',st=='Opposition'?'b strong':st=='Crossbench'?'strong':'g');
  return h}
-function reconcile(){var m=mayorC();if(m&&m.partyId&&party(m.partyId))S.govPartyId=m.partyId;
+function reconcile(){var d0=new Date().toLocaleDateString(),have=!!mayorC();
+ S.cands.forEach(function(c){var pm=String(c.primary||'').trim().toLowerCase()=='mayor',sm=String(c.secondary||'').trim().toLowerCase()=='mayor';if(!pm&&!sm)return;
+  var L=c.log=c.log||[];if(c.status=='active'&&!have){c.mayor=true;have=true}
+  if(pm){var own=(c.secondary&&!sm&&!/^Opposition /i.test(c.secondary))?c.secondary:'';L.push(d0+' Primary: Mayor → '+(own||'none')+' (Mayor is now a badge, not a role)');c.primary=own;c.secondary=''}
+  else{L.push(d0+' Secondary: Mayor removed (Mayor is now a badge, not a role)');c.secondary=''}});
+ var first=null;S.cands.forEach(function(c){if(c.status!='active'||!c.mayor)return;if(!first)first=c;else c.mayor=false});
+ var m=mayorC();if(m&&m.partyId&&party(m.partyId))S.govPartyId=m.partyId;
  S.cands.forEach(function(c){['primary','secondary'].forEach(function(f){if(labelRole(c[f])){var L=c.log=c.log||[];L.push(new Date().toLocaleDateString()+' '+(f=='primary'?'Primary':'Secondary')+': a typed office title was removed (it shows as a badge instead)');c[f]=''}})});
  S.parties.forEach(function(p){if(!p.deputyId)return;var d=S.cands.find(function(x){return x.id==p.deputyId});
-  if(!d||d.status!='active'||d.partyId!=p.id||d.primary=='Mayor'){p.deputyId=null;if(p.id==govId()&&!p.db){p.db={reason:'Deputy Mayor vacancy',votes:{}};noteAdd('Deputy Mayor','Deputy Mayor vacancy in '+p.name+'. A Deputy Mayor vote is open on the Parliament tab.')}}})}
+  if(!d||d.status!='active'||d.partyId!=p.id||d.mayor){p.deputyId=null;if(p.id==govId()&&!p.db){p.db={reason:'Deputy Mayor vacancy',votes:{}};noteAdd('Deputy Mayor','Deputy Mayor vacancy in '+p.name+'. A Deputy Mayor vote is open on the Parliament tab.')}}})}
 function officeStrip(){var g=govId(),gp=g&&party(g),m=mayorC(),dm=gp?members(gp.id).find(function(x){return x.id==gp.deputyId&&(!m||x.id!=m.id)}):null,op=S.oppId&&party(S.oppId),pl=function(x){var q=party(x.partyId);return q?' <small class="mut">('+esc(q.name)+')</small>':''};
  var cb=S.parties.filter(function(q){return g&&q.id!=g&&q.id!=S.oppId}).map(function(q){return'<span style="color:'+esc(q.color)+'"><b>'+esc(q.name)+'</b></span>'});
  var mh=m?'<span class="badge mayor">'+(m.interim?'Interim Mayor':'Mayor')+'</span> <b>'+esc(m.name)+'</b>'+pl(m):'<span class="badge b strong">Mayor: vacant</span>'+(gp?' <small class="mut">'+esc(gp.name)+' is still the governing party. Hold a leadership vote on the party leaders panel below to choose a Mayor.</small>':'');
@@ -220,19 +229,19 @@ function noteAdd(type,text){(S.notices=S.notices||[]).push({id:uid(),date:today(
 function leaderGone(c,why){var p=party(c.partyId);if(!p)return;
  if(p.leaderId==c.id){p.leaderId=null;p.lb={reason:'Leader '+why,votes:{}};noteAdd('Leadership','Leadership vacancy in '+p.name+': '+c.name+' ('+why+'). A leadership vote is open on the Parliament tab.')}
  if(p.deputyId==c.id){p.deputyId=null;if(p.id==govId()){p.db={reason:'Deputy Mayor '+why,votes:{}};noteAdd('Deputy Mayor','Deputy Mayor vacancy in '+p.name+': '+c.name+' ('+why+'). A Deputy Mayor vote is open on the Parliament tab.')}}
- if(c.primary=='Mayor'&&p.id==govId())mayorLeaves(c,p,why)}
+ if(c.mayor&&p.id==govId())mayorLeaves(c,p,why)}
 function mayorLeaves(c,p,why){var t=today(),d=members(p.id).find(function(x){return x.id==p.deputyId&&x.id!=c.id});S.govPartyId=p.id;
- c.notes=(c.notes?c.notes+'; ':'')+'Mayor until '+t;setRoles(c,c.secondary||'','',t);c.interim=false;
+ c.notes=(c.notes?c.notes+'; ':'')+'Mayor until '+t;c.mayor=false;c.interim=false;
  if(!p.lb)p.lb={reason:'Mayor '+why,votes:{}};
  if(d){makeInterim(d,p);noteAdd('Mayor',c.name+' ('+why+') is no longer Mayor. '+d.name+' is now Interim Mayor. '+p.name+' members vote on a replacement on the Parliament tab.')}
  else noteAdd('Mayor',c.name+' ('+why+') is no longer Mayor and there is no Deputy Mayor, so the office is vacant until '+p.name+' members vote on a replacement on the Parliament tab.')}
-function makeInterim(d,p){var t=today(),own=(d.primary&&d.primary!='Mayor')?d.primary:'';setRoles(d,'Mayor',own,t);d.interim=true;p.deputyId=null;mayorSeat(d,p);S.govPartyId=p.id}
+function makeInterim(d,p){d.mayor=true;d.interim=true;p.deputyId=null;mayorSeat(d,p);S.govPartyId=p.id}
 function mayorSeat(c,p){if(c.seat=='Senate')return;var sn=members(p.id).filter(function(x){return x.id!=c.id&&x.seat=='Senate'}).sort(function(a,b){return(a.votes||0)-(b.votes||0)});
  if(sn.length)sn[0].seat=c.seat||'Unseated';c.seat='Senate'}
 function installMayor(w,p){var t=today(),cur=mayorC();
  if(cur&&cur.id==w.id){cur.interim=false}
- else{if(cur){setRoles(cur,cur.secondary||'','',t);cur.interim=false;cur.notes=(cur.notes?cur.notes+'; ':'')+'Former Interim Mayor (until '+t+')'}
-  var own=(w.primary&&w.primary!='Mayor')?w.primary:'';setRoles(w,'Mayor',own,t);mayorSeat(w,p)}
+ else{if(cur){cur.mayor=false;cur.interim=false;cur.notes=(cur.notes?cur.notes+'; ':'')+'Former Interim Mayor (until '+t+')'}
+  w.mayor=true;w.interim=false;mayorSeat(w,p)}
  S.govPartyId=p.id;if(p.deputyId==w.id)p.deputyId=null;
  if(!p.deputyId&&!p.db)p.db={reason:'New Mayor',votes:{}};
  noteAdd('Mayor',w.name+' is the new Mayor of the governing party, '+p.name+'.')}
@@ -240,7 +249,7 @@ function openDeputy(pid){var p=party(pid);if(!p||p.id!=govId()){alert('Only the 
 function setDV(pid,vid,cid){party(pid).db.votes[vid]=cid;save()}
 function fillDV(pid){var p=party(pid),c=$('df_'+pid).value;members(pid).forEach(function(m){p.db.votes[m.id]=c});save()}
 function cancelDV(pid){delete party(pid).db;save()}
-function castDeputy(pid){var p=party(pid),ms=members(pid),cs=ms.filter(function(m){return m.primary!='Mayor'}),t={},nv=0;
+function castDeputy(pid){var p=party(pid),ms=members(pid),cs=ms.filter(function(m){return !m.mayor}),t={},nv=0;
  ms.forEach(function(v){var c=p.db.votes[v.id];if(c&&cs.some(function(m){return m.id==c})){t[c]=(t[c]||0)+1;nv++}});
  if(!nv){alert('At least one member must vote for someone.');return}
  var mx=Math.max.apply(null,Object.keys(t).map(function(k){return t[k]})),top=cs.filter(function(m){return t[m.id]==mx}).sort(function(a,b){return(b.votes||0)-(a.votes||0)}),tie=top.length>1,w=top[0],d=today();
@@ -248,7 +257,7 @@ function castDeputy(pid){var p=party(pid),ms=members(pid),cs=ms.filter(function(
  (S.leadership=S.leadership||[]).push({id:uid(),date:d,party:p.name,role:'Deputy Mayor',reason:p.db.reason,winner:w.name,votes:mx,tie:tie,tally:cs.filter(function(m){return t[m.id]}).map(function(m){return{n:m.name,v:t[m.id]}}).sort(function(a,b){return b.v-a.v})});
  noteAdd('Deputy Mayor',w.name+' elected Deputy Mayor of '+p.name+' ('+mx+' of '+nv+' votes'+(tie?', tie decided on last election votes':'')+')');
  delete p.db;save()}
-function deputyBallotHtml(p,ms){var cs=ms.filter(function(m){return m.primary!='Mayor'}),opts=function(sel){return'<option value="">— abstain —</option>'+cs.map(function(c){return'<option value="'+c.id+'"'+(sel==c.id?' selected':'')+'>'+esc(c.name)+'</option>'}).join('')};
+function deputyBallotHtml(p,ms){var cs=ms.filter(function(m){return !m.mayor}),opts=function(sel){return'<option value="">— abstain —</option>'+cs.map(function(c){return'<option value="'+c.id+'"'+(sel==c.id?' selected':'')+'>'+esc(c.name)+'</option>'}).join('')};
  return'<div style="margin:6px 0 12px 12px;border-left:4px solid '+esc(p.color)+';padding-left:8px"><div class="row"><span>Everyone votes for</span><select id="df_'+p.id+'">'+opts('')+'</select><button onclick="fillDV(\''+p.id+'\')">Fill</button></div>'
  +ms.map(function(v){return'<div class="m"><span>'+esc(v.name)+' votes for</span><select onchange="setDV(\''+p.id+'\',\''+v.id+'\',this.value)">'+opts(p.db.votes[v.id]||'')+'</select></div>'}).join('')
  +'<div class="row" style="margin-top:6px"><button class="p" onclick="castDeputy(\''+p.id+'\')">Cast Deputy Mayor votes</button><button onclick="cancelDV(\''+p.id+'\')">Cancel</button></div></div>'}
@@ -290,9 +299,9 @@ function arcPts(n){var rows=n<=10?1:n<=24?2:n<=42?3:4,rad=[],tot=0,pts=[],left=n
   for(i=0;i<nk;i++){var a=nk==1?Math.PI/2:Math.PI*(1-i/(nk-1));pts.push({x:cx+rad[k]*Math.cos(a),y:cx-rad[k]*Math.sin(a),a:a,r:rad[k]})}}
  pts.sort(function(p,q){return q.a-p.a||p.r-q.r});return{pts:pts,w:2*cx,h:cx+14,cx:cx}}
 function seatTip(m,p){var st=pstat(p,govId()),t=[];
- if(m.primary=='Mayor')t.push(m.interim?'INTERIM MAYOR':'MAYOR');if(isDeputy(m))t.push('DEPUTY MAYOR');
+ if(m.mayor)t.push(m.interim?'INTERIM MAYOR':'MAYOR');if(isDeputy(m))t.push('DEPUTY MAYOR');
  t.push(m.name,p.name+(st?' ('+st+')':''));if(isLeader(m))t.push(st=='Opposition'?'Opposition Leader':st=='Crossbench'?'Crossbench Leader':'Party Leader');
- if(m.primary&&m.primary!='Mayor')t.push(m.primary);if(m.secondary)t.push(m.secondary);return t.join(' · ')}
+ if(m.primary)t.push(m.primary);if(m.secondary)t.push(m.secondary);return t.join(' · ')}
 function chamberCard(title,ch){
  var gs=chOrder().map(function(p){var held=S.cands.filter(function(c){return c.status=='active'&&c.partyId==p.id&&c.seat==ch}).sort(function(a,b){return(b.votes||0)-(a.votes||0)}),
   cap=ch=='Senate'?(p.sn!=null?p.sn:held.length):(p.hs?p.hs.n:held.length);return{p:p,held:held,cap:Math.max(cap,held.length)}}).filter(function(g){return g.cap>0});
@@ -300,7 +309,7 @@ function chamberCard(title,ch){
  if(!n)return'<div class="card" style="margin:0"><h3 style="margin:0 0 6px">'+title+'</h3><span class="mut">No seats yet.</span></div>';
  var a=arcPts(n),sr=n<=24?11:n<=42?9:8,idx=0,svg='<svg viewBox="0 0 '+a.w+' '+a.h+'" style="width:100%;max-width:400px;display:block;margin:auto;overflow:visible" role="img" aria-label="'+esc(title)+' seating">';
  gs.forEach(function(g){for(var j=0;j<g.cap;j++){var pt=a.pts[idx++],m=g.held[j],col=esc(g.p.color);
-  svg+=m?(m.primary=='Mayor'?'<circle cx="'+pt.x.toFixed(1)+'" cy="'+pt.y.toFixed(1)+'" r="'+(sr+3.5)+'" fill="none" stroke="#f5b301" stroke-width="2.5"/>':isDeputy(m)?'<circle cx="'+pt.x.toFixed(1)+'" cy="'+pt.y.toFixed(1)+'" r="'+(sr+3.5)+'" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="3 2"/>':'')+'<circle cx="'+pt.x.toFixed(1)+'" cy="'+pt.y.toFixed(1)+'" r="'+sr+'" fill="'+col+'" stroke="'+col+'"><title>'+esc(seatTip(m,g.p))+'</title></circle>'
+  svg+=m?(m.mayor?'<circle cx="'+pt.x.toFixed(1)+'" cy="'+pt.y.toFixed(1)+'" r="'+(sr+3.5)+'" fill="none" stroke="#f5b301" stroke-width="2.5"/>':isDeputy(m)?'<circle cx="'+pt.x.toFixed(1)+'" cy="'+pt.y.toFixed(1)+'" r="'+(sr+3.5)+'" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="3 2"/>':'')+'<circle cx="'+pt.x.toFixed(1)+'" cy="'+pt.y.toFixed(1)+'" r="'+sr+'" fill="'+col+'" stroke="'+col+'"><title>'+esc(seatTip(m,g.p))+'</title></circle>'
    :'<circle cx="'+pt.x.toFixed(1)+'" cy="'+pt.y.toFixed(1)+'" r="'+(sr-1)+'" fill="none" stroke="'+col+'" stroke-width="2" stroke-dasharray="3 2"><title>Vacant seat · '+esc(g.p.name)+'</title></circle>'}});
  svg+='<text x="'+a.cx+'" y="'+(a.cx-8)+'" text-anchor="middle" font-size="22" font-weight="700" fill="currentColor">'+filled+'/'+n+'</text><text x="'+a.cx+'" y="'+(a.cx+10)+'" text-anchor="middle" font-size="11" fill="currentColor" opacity=".7">seats filled</text></svg>';
  var st=function(p){var t=pstat(p,govId());return t?' <small class="mut">'+t+'</small>':''};
@@ -322,7 +331,7 @@ function parlView(){var act=S.cands.filter(function(c){return c.status=='active'
  return chambers()+leadView()+h+box('Senate (upper house)','Senate')+box('House of Representatives (lower house)','House')+(rp?'<div class="row" style="margin-top:6px">'+rp+'</div>':'')+box('Unseated (still in their party)','Unseated')}
 function bl(){return S.bills=S.bills||[]}
 function bill(id){return bl().find(function(x){return x.id==id})}
-function mayorC(){return S.cands.find(function(c){return c.status=='active'&&c.primary=='Mayor'})}
+function mayorC(){return S.cands.find(function(c){return c.status=='active'&&c.mayor})}
 function govId(){var g=mayorC();if(g)return g.partyId;return(S.govPartyId&&party(S.govPartyId))?S.govPartyId:null}
 function chOf(b){return b.stage=='Senate'?'Senate':'House'}
 function chMembers(ch){return S.cands.filter(function(c){return c.status=='active'&&c.seat==ch})}
@@ -520,27 +529,24 @@ function clashes(pid,exceptId,p1,p2){var m=roleMaps(exceptId),out=[],gr=(pid&&pi
   if(gr&&k.f==0&&k.o&&canon&&gr.indexOf(canon)<0)out.push({n:'',msg:'The Government has no '+canon+', so the Opposition has nothing to oppose there.'})});
  return out}
 function roleClash(pid,exceptId,p1,p2){var c=clashes(pid,exceptId,p1,p2);if(c.length)return c[0].msg;
- var my=S.cands.find(function(x){return x.status=='active'&&x.primary=='Mayor'&&x.id!=exceptId});
- if(my&&[p1,p2].some(function(r){return(r||'').trim().toLowerCase()=='mayor'}))return'There is already a Mayor ('+my.name+').';
- return null}
+  return null}
 function roleOpts(pid,exceptId,field){var m=roleMaps(exceptId),opp=!!pid&&pid==S.oppId,showOpp=!S.oppId||opp||!pid,gr=opp?govRoles():null;
  var avail=function(r,form){var k=r.toLowerCase();return form=='opp'?!m.op[k]:!m.pl[k]};
  var pl=ROLES.filter(function(r){return avail(r,'plain')}),oL=(gr||ROLES).filter(function(r){return avail(r,'opp')}).map(function(r){return'Opposition '+r}),o;
  if(opp)o=field=='primary'?oL:pl;else o=showOpp?pl.concat(oL):pl;
- if(field=='primary'&&!S.cands.some(function(x){return x.status=='active'&&x.primary=='Mayor'&&x.id!=exceptId}))o.unshift('Mayor');
- return o.map(function(r){return'<option>'+esc(r)+'</option>'}).join('')}
+  return o.map(function(r){return'<option>'+esc(r)+'</option>'}).join('')}
 function dupNote(c){var n=[];clashes(c.partyId,c.id,c.primary,c.secondary).forEach(function(x){if(x.n&&n.indexOf(x.n)<0)n.push(x.n)});return n.length?'<br><small class="b">⚠ Same role as '+n.map(esc).join(', ')+'</small>':''}
 function pstat(p,govP){if(!govP)return'';if(p.id==govP)return'Government';if(!S.oppId||!party(S.oppId))return'Undecided';return p.id==S.oppId?'Opposition':'Crossbench'}
 function stBadge(t){if(!t)return'';var k={Government:'g',Opposition:'b',Crossbench:'mut',Undecided:'mut'}[t];return'<span class="badge '+k+'">'+t+'</span>'}
 function oppView(){var ps=S.parties;if(!ps.length)return'<span class="mut">Add parties first.</span>';
- var act=S.cands.filter(function(c){return c.status=='active'}),gov=act.find(function(c){return c.primary=='Mayor'}),govP=govId(),gp=govP?party(govP):null;
+ var act=S.cands.filter(function(c){return c.status=='active'}),gov=act.find(function(c){return c.mayor}),govP=govId(),gp=govP?party(govP):null;
  var top='<p>'+(gov?'Mayor: <b>'+esc(gov.name)+'</b>'+(gp?' ('+esc(gp.name)+')':''):(govP?'<span class="b">The Mayor\'s office is vacant.</span> Government: <b>'+esc(gp?gp.name:'')+'</b>':'<span class="mut">No Mayor yet. Run an election to set the Government.</span>'))+'</p>';
  var head='<tr><th>Portfolio</th>'+ps.map(function(p){return'<th style="border-bottom:3px solid '+esc(p.color)+'">'+esc(p.name)+'<br>'+stBadge(pstat(p,govP))+'</th>'}).join('')+'</tr>';
  var sm=govP?'<p>'+['Government','Opposition','Crossbench','Undecided'].map(function(t){var n=ps.filter(function(p){return pstat(p,govP)==t}).map(function(p){return esc(p.name)});return n.length?stBadge(t)+' <b>'+n.join(', ')+'</b>':''}).filter(Boolean).join(' &nbsp; ')+'</p>':'';
  var rows=ROLES.filter(function(r){return act.some(function(c){return portfolio(c)==r})});
- var body=rows.map(function(r){return'<tr><td><b>'+esc(r)+'</b></td>'+ps.map(function(p){var h=act.filter(function(c){return c.partyId==p.id&&portfolio(c)==r});return'<td>'+(h.map(function(c){return esc(c.name)+(c.primary=='Mayor'?' <span class="badge">Mayor</span>':'')+leaderBadge(c)}).join('<br>')||'<span class="mut">—</span>')+'</td>'}).join('')+'</tr>'}).join('');
+ var body=rows.map(function(r){return'<tr><td><b>'+esc(r)+'</b></td>'+ps.map(function(p){var h=act.filter(function(c){return c.partyId==p.id&&portfolio(c)==r});return'<td>'+(h.map(function(c){return esc(c.name)+leaderBadge(c)}).join('<br>')||'<span class="mut">—</span>')+'</td>'}).join('')+'</tr>'}).join('');
  var oth=act.filter(function(c){return !portfolio(c)&&c.partyId});
- if(oth.length)body+='<tr><td><b>Other roles</b></td>'+ps.map(function(p){return'<td>'+(oth.filter(function(c){return c.partyId==p.id}).map(function(c){return esc(c.name)+' <small class="mut">('+esc(c.primary||'no role')+(c.secondary?' / '+esc(c.secondary):'')+')</small>'}).join('<br>')||'<span class="mut">—</span>')+'</td>'}).join('')+'</tr>';
+ if(oth.length)body+='<tr><td><b>Other roles</b></td>'+ps.map(function(p){return'<td>'+(oth.filter(function(c){return c.partyId==p.id}).map(function(c){return esc(c.name)+leaderBadge(c)+' <small class="mut">('+esc(c.primary||'no role')+(c.secondary?' / '+esc(c.secondary):'')+')</small>'}).join('<br>')||'<span class="mut">—</span>')+'</td>'}).join('')+'</tr>';
  return top+sm+(body?'<table>'+head+body+'</table>':'<span class="mut">No portfolio roles assigned yet.</span>')}
 
 function addParty(){var n=$('pn').value.trim();if(!n)return;S.parties.push({id:uid(),name:n,color:$('pc').value});$('pn').value='';save()}
@@ -551,14 +557,15 @@ function delParty(id){var p=party(id);if(!p)return;ask('Remove "'+p.name+'"? Its
 function addCand(){var n=$('cn').value.trim(),pid=$('cp').value;if(!n)return;
  if(pid&&members(pid).length>=MAX){alert('That party already has '+MAX+' members. Remove one first.');return}
  var q1=$('c1').value.trim(),q2=$('c2').value.trim();
- if(labelRole(q1)||labelRole(q2)){alert('Deputy Mayor and Interim Mayor are not roles. The Deputy Mayor is chosen by a party vote on the Parliament tab and shows as a label.');return}
+ var tm=titleMsg(q1)||titleMsg(q2);if(tm){alert(tm);return}
+ var wantM=!!$('cmay').checked,curM=mayorC();if(wantM&&curM){alert('There is already a Mayor ('+curM.name+'). Remove their Mayor badge first.');return}
  var cl=pid?roleClash(pid,null,q1,q2):null;if(cl){alert(cl);return}
- readPhoto($('cf'),function(ph){S.cands.push({id:uid(),name:n,partyId:pid||null,primary:q1,secondary:q2,status:'active',photo:ph,seat:(pid&&party(pid)&&party(pid).hs)?'Unseated':null});
- ['cn','c1','c2','cf'].forEach(function(i){$(i).value=''});save()})}
+ readPhoto($('cf'),function(ph){S.cands.push({id:uid(),name:n,partyId:pid||null,primary:q1,secondary:q2,mayor:wantM,status:'active',photo:ph,seat:(pid&&party(pid)&&party(pid).hs)?'Unseated':null});
+ ['cn','c1','c2','cf'].forEach(function(i){$(i).value=''});$('cmay').checked=false;save()})}
 function rmCand(id){var c=S.cands.find(function(x){return x.id==id}),r=$('r'+id).value,p=party(c.partyId),nm=c.name+' - '+(p?p.name:'Unassigned');
  var msg=r=='Death'?'I\'m sorry to hear about the loss of '+nm+'. This death will be recorded in the notices if you click confirm.':r=='Resigned'?'Click confirm to file for the resignation of '+nm+'.':nm+' has finally retired, looks like you need a new candidate. Please confirm this.';
  if(p&&p.leaderId==c.id)msg+=' They are the party leader, so a leadership vote will open.';
- if(c.primary=='Mayor'&&p){var dm=members(p.id).find(function(x){return x.id==p.deputyId&&x.id!=c.id});msg+=dm?' They are the Mayor, so '+dm.name+' will become Interim Mayor and the party will vote on a replacement.':' They are the Mayor and there is no Deputy Mayor, so the office will be vacant until the party votes on a replacement.'}
+ if(c.mayor&&p){var dm=members(p.id).find(function(x){return x.id==p.deputyId&&x.id!=c.id});msg+=dm?' They are the Mayor, so '+dm.name+' will become Interim Mayor and the party will vote on a replacement.':' They are the Mayor and there is no Deputy Mayor, so the office will be vacant until the party votes on a replacement.'}
  if(p&&p.deputyId==c.id&&p.id==govId())msg+=' They are the Deputy Mayor, so a Deputy Mayor vote will open.';
  ask(msg,'Confirm',function(){var d=new Date().toLocaleDateString();leaderGone(c,r=='Death'?'died':r=='Resigned'?'resigned':'retired');c.status='removed';c.reason=r;c.date=d;c.formerParty=c.partyId;
   (S.notices=S.notices||[]).push({id:uid(),date:d,type:r,text:(r=='Death'?'Death notice':r=='Resigned'?'Resignation filed':'Retirement')+': '+nm+(c.primary?' ('+c.primary+')':'')});save()})}
@@ -576,16 +583,18 @@ function edit(id){editing=id;render()}
 function saveEdit(id){var c=S.cands.find(function(x){return x.id==id});
  var n=$('en_'+id).value.trim()||c.name,p1=$('e1_'+id).value.trim(),p2=$('e2_'+id).value.trim(),pid=$('ep_'+id).value||null;
  if(pid&&pid!=c.partyId&&members(pid).length>=MAX){alert('That party already has '+MAX+' members.');return}
- if(labelRole(p1)||labelRole(p2)){alert('Deputy Mayor and Interim Mayor are not roles. The Deputy Mayor is chosen by a party vote on the Parliament tab and shows as a label.');return}
+ var tm=titleMsg(p1)||titleMsg(p2);if(tm){alert(tm);return}
  var cl=pid?roleClash(pid,id,p1,p2):null;if(cl){alert(cl);return}
+ var wm=$('emay_'+id)?!!$('emay_'+id).checked:!!c.mayor,cm=mayorC();if(wm&&!c.mayor&&cm&&cm.id!=id){alert('There is already a Mayor ('+cm.name+'). Remove their Mayor badge first.');return}
  var d=new Date().toLocaleDateString(),L=c.log=c.log||[];
+ if(wm!=!!c.mayor)L.push(d+' Mayor badge: '+(c.mayor?'yes':'no')+' → '+(wm?'yes':'no'));
  if(p1!=(c.primary||''))L.push(d+' Primary: '+(c.primary||'none')+' → '+(p1||'none'));
  if(p2!=(c.secondary||''))L.push(d+' Secondary: '+(c.secondary||'none')+' → '+(p2||'none'));
  if(pid!=c.partyId){var o=party(c.partyId),w=party(pid);L.push(d+' Party: '+(o?o.name:'none')+' → '+(w?w.name:'none'))}
- readPhoto($('ef_'+id),function(ph){if(pid!=c.partyId){leaderGone(c,'left the party');c.seat=(pid&&party(pid)&&party(pid).hs)?'Unseated':null;c.votes=null}c.name=n;c.primary=p1;c.secondary=p2;c.partyId=pid;c.notes=$('enote_'+id).value.trim();if(ph)c.photo=ph;editing=null;save()})}
+ readPhoto($('ef_'+id),function(ph){if(pid!=c.partyId){leaderGone(c,'left the party');c.seat=(pid&&party(pid)&&party(pid).hs)?'Unseated':null;c.votes=null}c.name=n;c.primary=p1;c.secondary=p2;c.partyId=pid;c.mayor=wm;if(!wm)c.interim=false;c.notes=$('enote_'+id).value.trim();if(ph)c.photo=ph;editing=null;save()})}
 function memberRow(c,assignable){
  if(editing==c.id){
-  return'<div class="m"><div class="row" style="width:100%;margin:0"><input id="en_'+c.id+'" value="'+esc(c.name)+'"><input id="e1_'+c.id+'" list="dlp_'+c.id+'" value="'+esc(c.primary)+'" placeholder="Primary role"><input id="e2_'+c.id+'" list="dls_'+c.id+'" value="'+esc(c.secondary)+'" placeholder="Secondary role"><input id="enote_'+c.id+'" value="'+esc(c.notes)+'" placeholder="Notes (e.g. Former Mayor)"><datalist id="dlp_'+c.id+'">'+roleOpts(c.partyId,c.id,'primary')+'</datalist><datalist id="dls_'+c.id+'">'+roleOpts(c.partyId,c.id,'secondary')+'</datalist><select id="ep_'+c.id+'"><option value="">Unassigned</option>'+S.parties.map(function(p){return'<option value="'+p.id+'"'+(p.id==c.partyId?' selected':'')+'>'+esc(p.name)+'</option>'}).join('')+'</select><input type="file" id="ef_'+c.id+'" accept="image/*" title="New photo"><button class="p" onclick="saveEdit(\''+c.id+'\')">Save</button><button onclick="edit(null)">Cancel</button></div></div>'}
+  return'<div class="m"><div class="row" style="width:100%;margin:0"><input id="en_'+c.id+'" value="'+esc(c.name)+'"><input id="e1_'+c.id+'" list="dlp_'+c.id+'" value="'+esc(c.primary)+'" placeholder="Primary role"><input id="e2_'+c.id+'" list="dls_'+c.id+'" value="'+esc(c.secondary)+'" placeholder="Secondary role"><input id="enote_'+c.id+'" value="'+esc(c.notes)+'" placeholder="Notes (e.g. Former Mayor)"><label class="mut" style="flex:none;display:flex;gap:4px;align-items:center"><input type="checkbox" id="emay_'+c.id+'" style="flex:none"'+(c.mayor?' checked':'')+'> Mayor</label><datalist id="dlp_'+c.id+'">'+roleOpts(c.partyId,c.id,'primary')+'</datalist><datalist id="dls_'+c.id+'">'+roleOpts(c.partyId,c.id,'secondary')+'</datalist><select id="ep_'+c.id+'"><option value="">Unassigned</option>'+S.parties.map(function(p){return'<option value="'+p.id+'"'+(p.id==c.partyId?' selected':'')+'>'+esc(p.name)+'</option>'}).join('')+'</select><input type="file" id="ef_'+c.id+'" accept="image/*" title="New photo"><button class="p" onclick="saveEdit(\''+c.id+'\')">Save</button><button onclick="edit(null)">Cancel</button></div></div>'}
  var h='<div class="m"><div style="display:flex;gap:8px;align-items:center">'+av(c)+'<div><b>'+esc(c.name)+'</b>'+seatBadge(c)+leaderBadge(c)+officeBadge(c)+'<br><small>'+esc(c.primary||'—')+(c.secondary?' / '+esc(c.secondary):'')+'</small>'+(c.log&&c.log.length?'<br><small class="mut">'+c.log.slice(-3).map(esc).join(' · ')+'</small>':'')+(c.notes?'<br><small class="mut">📝 '+esc(c.notes)+'</small>':'')+opp(c)+dupNote(c)+'</div></div><div class="row" style="margin:0">';
  if(assignable){h+='<select id="as'+c.id+'">'+S.parties.map(function(p){return'<option value="'+p.id+'">'+esc(p.name)+'</option>'}).join('')+'</select><button onclick="assign(\''+c.id+'\')">Assign</button>'}
  return h+(c.secondary?'<button onclick="swapRoles(\''+c.id+'\')" title="Swap primary and secondary roles">⇄ Swap</button>':'')+'<button onclick="edit(\''+c.id+'\')">Edit</button>'+(c.partyId?'<button onclick="releaseCand(\''+c.id+'\')" title="Move to the Unassigned pool">Release</button>':'')+'<select id="r'+c.id+'"><option>Death</option><option>Resigned</option><option>Retired</option></select><button class="d" onclick="rmCand(\''+c.id+'\')">Remove</button></div></div>'}
@@ -675,15 +684,15 @@ function commitElection(w,mayor){var d=new Date().toLocaleDateString();
  if(w){
   var oi=-1,bv=-1;R.rs.forEach(function(r,i){if(i!=R.win&&R.fpc[i]>bv){bv=R.fpc[i];oi=i}});R.oppId=oi>=0?R.rs[oi].id:null;S.oppId=R.oppId;R.oppName=R.oppId&&party(R.oppId)?party(R.oppId).name:null;
   var isOpp=function(r){return /^Opposition /i.test(r||'')};
-  var ownRole=function(c){if(isOpp(c.primary))return(c.secondary&&!isOpp(c.secondary))?c.secondary:(c.base||'');if(c.primary=='Mayor')return(c.secondary&&!isOpp(c.secondary))?c.secondary:'';return c.primary||''};
+  var ownRole=function(c){if(isOpp(c.primary))return(c.secondary&&!isOpp(c.secondary))?c.secondary:(c.base||'');return c.primary||''};
   S.cands.forEach(function(c){if(c.status!='active'||c.id==mayor.id)return;
-   var wasM=c.primary=='Mayor',own=ownRole(c),run=R.cp.some(function(p){return p.id==c.partyId}),pri=c.primary||'',sec=c.secondary||'';
-   if(wasM){pri=own;sec=''}
-   else if(run&&c.partyId!=R.oppId&&isOpp(c.primary)){pri=own;sec=''}
+   var wasM=!!c.mayor,own=ownRole(c),run=R.cp.some(function(p){return p.id==c.partyId}),pri=c.primary||'',sec=c.secondary||'';
+   if(wasM){c.mayor=false;c.interim=false}
+   if(!wasM&&run&&c.partyId!=R.oppId&&isOpp(c.primary)){pri=own;sec=''}
    if(wasM)c.notes=(c.notes?c.notes+'; ':'')+'Former Mayor (until '+d+')';
    setRoles(c,pri,sec,d)});
-  var oR=ownRole(mayor),ms=(oR&&oR!='Mayor'&&!isOpp(oR))?oR:'';
-  setRoles(mayor,'Mayor',ms,d);
+  if(isOpp(mayor.primary)){var oR=ownRole(mayor);setRoles(mayor,(oR&&!isOpp(oR))?oR:'','',d)}
+  mayor.mayor=true;mayor.interim=false;
   S.govPartyId=w.id;S.cands.forEach(function(x){x.interim=false});
   S.parties.forEach(function(pp){if(pp.id!=w.id){pp.deputyId=null;delete pp.db}});
   var gp=party(w.id),dp=gp&&gp.deputyId&&members(gp.id).find(function(x){return x.id==gp.deputyId&&x.id!=mayor.id});
