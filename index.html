@@ -92,7 +92,9 @@ textarea{font:inherit;color:var(--tx);background:var(--card);border:1px solid va
 <div class="row"><label>Reading voice <select id="vs" onchange="setVoice(this.value)"></select></label><label>Speed <select id="vr" onchange="setRate(this.value)"><option value="0.75">Slow</option><option value="0.9">Relaxed</option><option value="1" selected>Normal</option><option value="1.1">Brisk</option><option value="1.25">Fast</option><option value="1.5">Very fast</option></select></label><button onclick="testVoice()">🔊 Test voice</button><button onclick="stopRead()">⏹ Stop</button></div>
 <div class="row"><input id="bt" placeholder="Bill title" maxlength="120"></div>
 <div class="row"><textarea id="bd" rows="3" placeholder="What does this bill do?"></textarea></div>
-<div class="row"><select id="bs" onchange="syncBp()"></select><select id="bp"></select><button class="p" onclick="addBill()">Introduce in the House</button></div></div>
+<div class="mut" style="margin-bottom:6px">A bill can only be introduced by the member whose role is the subject of the bill, for example the Police Minister for a bill on police checks. They must also hold a seat in the Senate or the House. Members who hold the role but are Unseated are greyed out until they are seated.</div>
+<div class="row"><select id="bs" onchange="syncBp()"></select><select id="bp" title="Subject of the bill (the sponsor's role)"></select><button class="p" onclick="addBill()">Introduce in the House</button></div>
+<div id="bnote" class="mut" style="margin-top:4px"></div></div>
 <div id="bills"></div></div>
 
 <script>
@@ -114,9 +116,7 @@ function syncRoles(){ROLES.length=0;OFFICE.length=0;(Array.isArray(S.roles)?S.ro
 syncRoles();
 function refreshRoleLists(){
  document.getElementById('roles').innerHTML=['Former Mayor'].concat(ROLES,ROLES.map(function(r){return'Opposition '+r})).map(function(r){return'<option>'+esc(r)+'</option>'}).join('');
- var bp=document.getElementById('bp'),v=bp.value;
- bp.innerHTML=['General'].concat(ROLES).map(function(r){return'<option>'+esc(r)+'</option>'}).join('');
- bp.value=v;if(bp.value!==v)bp.value='General'}
+}
 function roleHolders(r){var out=[];S.cands.forEach(function(c){if(c.status!='active'||!c.partyId)return;
  var isO=/^Opposition /i.test(c.primary||'');
  if(portfolio(c)==r)out.push({c:c,p:party(c.partyId),opp:isO});
@@ -343,8 +343,10 @@ function initDraft(b){var ch=chOf(b),st={},vt={};S.parties.forEach(function(p){s
 function selHtml(v,on){return'<select onchange="'+on+'">'+['For','Against','Abstain'].map(function(o){return'<option'+(o==v?' selected':'')+'>'+o+'</option>'}).join('')+'</select>'}
 function addBill(){var t=$('bt').value.trim(),d=$('bd').value.trim(),sid=$('bs').value;
  if(!t){alert('Give the bill a title.');return}
- if(!sid){alert('Choose a sponsor. Only members holding a Senate or House seat can sponsor a bill.');return}
- var c=S.cands.find(function(x){return x.id==sid}),g=govId(),typ=!g?'Unclassified':c.partyId==g?'Government':(c.partyId==S.oppId?'Opposition':'Crossbench');
+ if(!sid){alert('Choose a sponsor. Only a seated member whose role is the subject of the bill can introduce it.');return}
+ var c=S.cands.find(function(x){return x.id==sid}),pf=$('bp').value;if(c&&!pf){alert(c.name+' does not hold a portfolio role, so cannot introduce a bill. A bill can only be introduced by the member whose role is the subject of the bill.');return}
+ var why=sponsorWhy(c,pf);if(why){alert(why);return}
+ var g=govId(),typ=!g?'Unclassified':c.partyId==g?'Government':(c.partyId==S.oppId?'Opposition':'Crossbench');
  S.billNo=(S.billNo||0)+1;
  bl().push({id:uid(),no:'Bill '+String(S.billNo).padStart(3,'0'),title:t,desc:d,sponsorId:sid,sponsor:c.name,partyId:c.partyId,type:typ,portfolio:$('bp').value,date:today(),stage:'House',record:[],amend:''});
  $('bt').value='';$('bd').value='';save()}
@@ -460,8 +462,26 @@ function readBill(id,mode){var b=bill(id);if(!b)return;var p=party(b.partyId),o=
  speak(o.join(' '))}
 function readAm(id,i){var b=bill(id),t=b&&amList(b)[i];if(!t||!String(t).trim()){alert('That amendment is empty.');return}speak('Amendment '+(i+1)+'. '+t)}
 function readBar(b){return'<div class="row" style="margin-top:6px"><button onclick="readBill(\''+b.id+'\',\'bill\')">🔊 Read bill aloud</button><button onclick="readBill(\''+b.id+'\',\'am\')">🔊 Read amendments</button><button onclick="stopRead()">⏹ Stop</button></div>'}
-function sponsorOpts(){return S.cands.filter(function(c){return c.status=='active'&&(c.seat=='House'||c.seat=='Senate')}).sort(function(a,b){var pa=(party(a.partyId)||{}).name||'',pb=(party(b.partyId)||{}).name||'';return pa<pb?-1:pa>pb?1:a.name<b.name?-1:1}).map(function(c){return'<option value="'+c.id+'">'+esc(c.name)+' ('+esc((party(c.partyId)||{}).name||'—')+' · '+c.seat+')</option>'}).join('')}
-function newBill(t,d,sid,pf,x){var c=S.cands.find(function(y){return y.id==sid});if(!c)return null;var g=govId(),typ=!g?'Unclassified':c.partyId==g?'Government':(c.partyId==S.oppId?'Opposition':'Crossbench');
+function sponsorRoles(c){var seen={},out=[];[c.primary,c.secondary].forEach(function(r){var b=String(r||'').replace(/^Opposition /,'');if(b&&ROLES.indexOf(b)>=0&&!seen[b]){seen[b]=1;out.push(b)}});return out}
+function isSeated(c){return c.seat=='House'||c.seat=='Senate'}
+function sponsorWhy(c,pf){if(!c||c.status!='active')return'Choose a sponsor.';var rs=sponsorRoles(c),subj=pf&&pf!='General';
+ if(subj&&rs.indexOf(pf)<0)return c.name+' does not hold the '+pf+' role, so cannot introduce a bill on it. A bill can only be introduced by the member whose role is the subject of the bill.';
+ if(!subj&&!rs.length&&!isSeated(c))return c.name+' does not hold a seat.';
+ if(!isSeated(c))return c.name+' holds the '+(subj?pf:rs.join(' / '))+' role but is '+(c.seat=='Unseated'?'Unseated':'not seated')+', so cannot introduce a bill until they hold a seat in the Senate or the House.';
+ return''}
+function byParty(a,b){var pa=(party(a.partyId)||{}).name||'',pb=(party(b.partyId)||{}).name||'';return pa<pb?-1:pa>pb?1:a.name<b.name?-1:1}
+function sponsorList(pf){var subj=pf&&pf!='General';return S.cands.filter(function(c){return c.status=='active'&&c.partyId&&(subj?sponsorRoles(c).indexOf(pf)>=0:isSeated(c))&&!sponsorWhy(c,pf)}).sort(byParty)}
+function sponsorOpts(pf){return sponsorList(pf).map(function(c){return'<option value="'+c.id+'">'+esc(c.name)+' ('+esc((party(c.partyId)||{}).name||'—')+' · '+c.seat+(pf&&pf!='General'?'':' · '+esc(c.primary||'no role'))+')</option>'}).join('')}
+function noSponsorMsg(pf){return'<span class="mut">'+(pf&&pf!='General'?'Nobody who holds the '+esc(pf)+' role currently has a seat in the Senate or the House, so nobody can introduce a bill on it yet.':'No members hold seats yet, so nobody can sponsor a bill.')+'</span>'}
+function lbl(c){var r=[c.primary,c.secondary].filter(Boolean).join(' / ');return c.name+' ('+((party(c.partyId)||{}).name||'—')+' · '+(c.seat||'no seat')+' · '+r+')'}
+function fillBillForm(){var bs=$('bs'),sv=bs.value,all=S.cands.filter(function(c){return c.status=='active'&&c.partyId&&sponsorRoles(c).length}).sort(byParty),ok=all.filter(function(c){return isSeated(c)}),no=all.filter(function(c){return !isSeated(c)});
+ bs.innerHTML=ok.length?ok.map(function(c){return'<option value="'+c.id+'">'+esc(lbl(c))+'</option>'}).join('')+no.map(function(c){return'<option value="" disabled>'+esc(lbl(c))+' — cannot sponsor until seated</option>'}).join(''):'<option value="">No seated member holds a portfolio role</option>'+no.map(function(c){return'<option value="" disabled>'+esc(lbl(c))+' — cannot sponsor until seated</option>'}).join('');
+ if(ok.some(function(c){return c.id==sv}))bs.value=sv;else if(ok.length)bs.value=ok[0].id;
+ $('bnote').innerHTML=no.length?'Cannot introduce a bill yet (not in the Senate or the House): '+no.map(function(c){return'<b>'+esc(c.name)+'</b> ('+esc(sponsorRoles(c).join(' / '))+')'}).join(', ')+'.':'';
+ if(bs.value!==lastBs)syncBp();else fillSubjects()}
+function fillSubjects(){var c=S.cands.find(function(x){return x.id==$('bs').value}),bp=$('bp'),v=bp.value,rs=c?sponsorRoles(c):[];
+ bp.innerHTML=rs.length?rs.map(function(r){return'<option>'+esc(r)+'</option>'}).join(''):'<option value="">—</option>';if(rs.indexOf(v)>=0)bp.value=v}
+function newBill(t,d,sid,pf,x){var c=S.cands.find(function(y){return y.id==sid});if(!c)return null;var why=sponsorWhy(c,pf);if(why){alert(why);return null}var g=govId(),typ=!g?'Unclassified':c.partyId==g?'Government':(c.partyId==S.oppId?'Opposition':'Crossbench');
  S.billNo=(S.billNo||0)+1;var nb={id:uid(),no:'Bill '+String(S.billNo).padStart(3,'0'),title:t,desc:d,sponsorId:sid,sponsor:c.name,partyId:c.partyId,type:typ,portfolio:pf||'General',date:today(),stage:'House',record:[],amend:''};
  Object.keys(x||{}).forEach(function(k){nb[k]=x[k]});bl().push(nb);return nb}
 function amendLaw(id,kind){var b=bill(id),ss=$('lw_s_'+id),tt=$('lw_t_'+id);if(!b||b.stage!='Law'||b.repealed)return;
@@ -487,10 +507,10 @@ function lawStatus(b){var h='',ab=b.amendedBy||[];
  var pend=bl().filter(function(x){return x.parentId==b.id&&x.kind&&x.kind!='Reintroduction'&&['Law','Defeated','Vetoed'].indexOf(x.stage)<0});
  if(pend.length)h+='<div class="mut" style="margin:6px 0">Pending: '+pend.map(function(x){return esc(x.no)+' ('+esc(x.kind.toLowerCase())+', '+esc(stageLabel(x).toLowerCase())+')'}).join(', ')+'</div>';
  return h}
-function lawForm(b){if(b.repealed)return'';var so=sponsorOpts();
- return'<details style="margin-top:6px"><summary>Change or repeal this law</summary><p class="mut" style="margin:6px 0">A law is not edited directly. To change it, introduce an amendment bill. To remove it, introduce a repeal bill. Either one goes through the House, the Senate and the Mayor like any other bill, and this law stays in force as written until it passes.</p>'+(so?'<div class="row"><select id="lw_s_'+b.id+'">'+so+'</select></div><div class="row"><textarea id="lw_t_'+b.id+'" rows="3" maxlength="3000" placeholder="What does the amendment change? (For a repeal, an optional reason)"></textarea></div><div class="row"><button class="p" onclick="amendLaw(\''+b.id+'\',\'Amendment\')">Introduce amendment bill</button><button class="d" onclick="amendLaw(\''+b.id+'\',\'Repeal\')">Introduce repeal bill</button></div>':'<span class="mut">No members hold seats yet, so nobody can sponsor a bill.</span>')+'</details>'}
-function reintroUi(b){var so=sponsorOpts();
- return'<p class="mut" style="margin:6px 0">'+(b.stage=='Vetoed'?'A vetoed':'A defeated')+' bill cannot be revived. It has to come back as a new bill, which starts again in the House.'+(b.reintroducedAs?' It has already been reintroduced as '+esc(b.reintroducedAs)+'.':'')+'</p>'+(so?'<div class="row"><select id="ri_s_'+b.id+'">'+so+'</select><button onclick="reintroBill(\''+b.id+'\')">Reintroduce as a new bill</button></div>':'<span class="mut">No members hold seats yet, so nobody can sponsor a bill.</span>')}
+function lawForm(b){if(b.repealed)return'';var so=sponsorOpts(b.portfolio);
+ return'<details style="margin-top:6px"><summary>Change or repeal this law</summary><p class="mut" style="margin:6px 0">A law is not edited directly. To change it, introduce an amendment bill. To remove it, introduce a repeal bill. Either one goes through the House, the Senate and the Mayor like any other bill, and this law stays in force as written until it passes.</p>'+(so?'<div class="row"><select id="lw_s_'+b.id+'" title="Sponsor: must hold the '+esc(b.portfolio||'General')+' role">'+so+'</select></div><div class="row"><textarea id="lw_t_'+b.id+'" rows="3" maxlength="3000" placeholder="What does the amendment change? (For a repeal, an optional reason)"></textarea></div><div class="row"><button class="p" onclick="amendLaw(\''+b.id+'\',\'Amendment\')">Introduce amendment bill</button><button class="d" onclick="amendLaw(\''+b.id+'\',\'Repeal\')">Introduce repeal bill</button></div>':noSponsorMsg(b.portfolio))+'</details>'}
+function reintroUi(b){var so=sponsorOpts(b.portfolio);
+ return'<p class="mut" style="margin:6px 0">'+(b.stage=='Vetoed'?'A vetoed':'A defeated')+' bill cannot be revived. It has to come back as a new bill, which starts again in the House.'+(b.reintroducedAs?' It has already been reintroduced as '+esc(b.reintroducedAs)+'.':'')+'</p>'+(so?'<div class="row"><select id="ri_s_'+b.id+'">'+so+'</select><button onclick="reintroBill(\''+b.id+'\')">Reintroduce as a new bill</button></div>':noSponsorMsg(b.portfolio))}
 function billCard(b){var p=party(b.partyId),my=mayorC(),ST=['House','Senate','HouseAmend'];
  var h='<div class="card" style="margin:8px 0"><div class="row" style="justify-content:space-between;margin:0"><b>'+esc(b.no)+': '+esc(b.title)+'</b><span class="badge '+(b.stage=='Law'?(b.repealed?'mut':'g'):(b.stage=='Defeated'||b.stage=='Vetoed'?'b':'mut'))+'">'+esc(stageLabel(b))+'</span></div>'
  +'<div class="mut">'+esc(b.type)+' bill · '+esc(b.portfolio||'General')+' · Sponsor: '+esc(b.sponsor)+(p?' ('+esc(p.name)+')':'')+' · Introduced '+esc(b.date)+'</div>'
@@ -508,7 +528,7 @@ function billsView(){var all=bl();if(!all.length)return'<span class="mut">No bil
  var fin=['Law','Defeated','Vetoed'];
  return sec('In progress',all.filter(function(b){return fin.indexOf(b.stage)<0}))+sec('Laws passed',all.filter(function(b){return b.stage=='Law'&&!b.repealed}))+sec('Repealed laws',all.filter(function(b){return b.stage=='Law'&&b.repealed}))+sec('Defeated and vetoed',all.filter(function(b){return b.stage=='Defeated'||b.stage=='Vetoed'}))}
 var lastBs=null;
-function syncBp(){var c=S.cands.find(function(x){return x.id==$('bs').value}),f=c?portfolio(c):null;$('bp').value=f||'General';lastBs=$('bs').value}
+function syncBp(){fillSubjects();lastBs=$('bs').value}
 function rbase(r){return(r||'').trim().replace(/\s+/g,' ').replace(/^opposition /i,'').toLowerCase()}
 function rkeys(c){return[c.primary,c.secondary].map(rbase).filter(function(b){return b&&b!='mayor'&&b!='former mayor'})}
 function govRoles(){var g=govId();if(!g)return null;var set={};S.cands.forEach(function(c){if(c.status=='active'&&c.partyId==g){var f=portfolio(c);if(f)set[f]=true}});return ROLES.filter(function(r){return set[r]})}
@@ -603,8 +623,7 @@ function render(){
  refreshRoleLists();$('rolesTbl').innerHTML=rolesView();$('officeRolesTbl').innerHTML=officeRolesView();
  $('ev').value=S.eligible||'';$('opp').innerHTML=oppView();$('parl').innerHTML=parlView();
  $('notices').innerHTML=(S.notices&&S.notices.length)?S.notices.slice().reverse().map(function(n){return'<div class="m"><div><span class="badge '+(n.type=='Death'?'b':'mut')+'">'+esc(n.type)+'</span> '+esc(n.text)+'</div><small class="mut">'+esc(n.date)+'</small></div>'}).join(''):'<span class="mut">No notices yet.</span>';
- var sp=S.cands.filter(function(c){return c.status=='active'&&(c.seat=='House'||c.seat=='Senate')}).sort(function(a,b){var pa=(party(a.partyId)||{}).name||'',pb=(party(b.partyId)||{}).name||'';return pa<pb?-1:pa>pb?1:a.name<b.name?-1:1}),sv=$('bs').value;
- $('bs').innerHTML=sp.length?sp.map(function(c){return'<option value="'+c.id+'">'+esc(c.name)+' ('+esc((party(c.partyId)||{}).name||'—')+' · '+c.seat+' · '+esc(c.primary||'no role')+')</option>'}).join(''):'<option value="">No seated members yet</option>';$('bs').value=sv;if($('bs').value!==lastBs)syncBp();
+ fillBillForm();
  $('bills').innerHTML=billsView();
  $('fees').innerHTML=S.parties.length?S.parties.map(function(p){var f=fee(p.id);return'<div class="m"><div><b style="color:'+esc(p.color)+'">'+esc(p.name)+'</b>'+(members(p.id).length<MAX?' <small class="b">Not eligible: '+members(p.id).length+'/'+MAX+' members</small>':'')+'</div><div class="row" style="margin:0"><label><input type="checkbox" style="flex:none"'+(f.paid?' checked':'')+' onchange="setFee(\''+p.id+'\',\'paid\',this.checked)"> Paid</label><input type="number" min="0" step="any" placeholder="Fee amount" style="flex:0 1 120px" value="'+(f.amount==null?'':f.amount)+'" onchange="setFee(\''+p.id+'\',\'amount\',this.value)"><input type="date" style="flex:0 1 150px" value="'+esc(f.date)+'" onchange="setFee(\''+p.id+'\',\'date\',this.value)"></div></div>'}).join(''):'<span class="mut">Add parties first.</span>';
  var opts=S.parties.map(function(p){return'<option value="'+p.id+'">'+esc(p.name)+' ('+members(p.id).length+'/'+MAX+')</option>'}).join('');
