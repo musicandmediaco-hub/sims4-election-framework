@@ -44,6 +44,7 @@ textarea{font:inherit;color:var(--tx);background:var(--card);border:1px solid va
 </style></head><body>
 <h1>Sims 4 Politics</h1>
 <div class="mut" style="margin:-6px 0 10px">A companion app that runs alongside The Sims 4</div>
+<div id="syncbar" class="row" style="margin:0 0 8px"></div>
 <div id="err" class="hide" style="background:var(--bad);color:#fff;padding:8px 10px;border-radius:6px;margin-bottom:8px"></div>
 <div id="md" class="mo hide"><div class="mb"><p id="mdMsg"></p><div class="row" style="margin:0"><button class="p" id="mdOk" onclick="mdYes()">Confirm</button><button id="mdNo" onclick="mdNo()">Cancel</button></div></div></div>
 <div class="row"><button onclick="exportData()">⬇ Export backup</button><button onclick="$('imp').click()">⬆ Import backup</button><input type="file" id="imp" accept=".json,application/json" class="hide" onchange="importData(this)"><span class="mut">Back up regularly — data is stored in this browser only.</span></div>
@@ -106,14 +107,14 @@ textarea{font:inherit;color:var(--tx);background:var(--card);border:1px solid va
 <script>
 var S={parties:[],cands:[],actions:[],history:[]},KEY='election-framework-v1',MAX=8;
 try{var l=localStorage.getItem(KEY);if(l)S=JSON.parse(l)}catch(e){}
-function save(){try{reconcile()}catch(e){}try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}render()}
+function save(){try{reconcile()}catch(e){}try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}try{queueSync()}catch(e){}render()}
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
 function $(i){return document.getElementById(i)}
 function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6)}
-var MD_FN=null;
-function ask(msg,label,fn,single){$('mdMsg').innerHTML=esc(msg);$('mdOk').textContent=label||'OK';$('mdNo').classList.toggle('hide',!!single);MD_FN=fn||null;$('md').classList.remove('hide')}
-function mdYes(){var f=MD_FN;MD_FN=null;$('md').classList.add('hide');if(f)f()}
-function mdNo(){MD_FN=null;$('md').classList.add('hide')}
+var MD_FN=null,MD_NO=null;
+function ask(msg,label,fn,single){$('mdMsg').innerHTML=esc(msg);$('mdOk').textContent=label||'OK';$('mdNo').classList.toggle('hide',!!single);MD_FN=fn||null;MD_NO=null;$('md').classList.remove('hide')}
+function mdYes(){var f=MD_FN;MD_FN=null;MD_NO=null;$('md').classList.add('hide');if(f)f()}
+function mdNo(){var f=MD_NO;MD_NO=null;MD_FN=null;$('md').classList.add('hide');if(f)f()}
 function note(m){ask(String(m),'OK',null,true)}
 if(typeof window!=='undefined'){window.alert=note;window.addEventListener('error',function(e){var b=$('err');b.textContent='Something went wrong: '+(e.message||'unknown error')+'. Try refreshing, and export a backup if you can.';b.classList.remove('hide')})}
 var DEF_ROLES=['Finance Minister','Foreign Affairs Minister','Arts Minister','Police Minister','Health Minister','Travel Minister','Wellness Minister','Science Minister','Small Business','Environment','Communications','Entertainment','Education','Technology & Innovation','Public Happiness','Minister for Trade','Citizen Welfare Minister','Magical Affairs Spokesperson','Minister for Justice','Jobs & Industry Minister','Economic Sovereignty Minister','Minister for Sustainable Development','Energy and Resources Minister'];
@@ -782,6 +783,54 @@ function commitElection(w,mayor){var d=new Date().toLocaleDateString();
  S.history.push({name:R.name,date:d,winner:w?w.name:'Hung parliament',hung:!w,mayor:mayor?mayor.name:null,opposition:(w&&R.oppId&&party(R.oppId))?party(R.oppId).name:null,chambers:R.seatSum||null,rp:rp,fees:R.cp.map(function(p){var f=fee(p.id);return{name:p.name,amount:f.amount,date:f.date}}),results:R.rs.map(function(r,i){return{name:r.name,share:R.fpc[i]/tot*100,votes:R.fpc[i],elim:!!R.elimSet[i]}}).sort(function(a,b){return b.votes-a.votes})});
  S.actions=[];R.cp.forEach(function(p){var f=fee(p.id);f.paid=false;f.date=today()});$('en').value='';save()}
 (function(){var ch=false,d=today();S.cands.forEach(function(c){if(c.status=='active'&&/^Opposition /i.test(c.primary||'')&&c.secondary&&!/^Opposition /i.test(c.secondary)&&rbase(c.primary)==rbase(c.secondary)&&c.base&&rbase(c.base)!=rbase(c.primary)){setRoles(c,c.primary,c.base,d);ch=true}});if(ch){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}})();
+
+/* ===== Server sync (Vercel) ===== */
+var SYNC={pw:'',on:false,etag:null,t:null,busy:false,again:false,dirty:false,state:'idle',msg:'',lastCheck:0};
+function hashStr(s){var h=5381;for(var i=0;i<s.length;i++)h=((h<<5)+h+s.charCodeAt(i))|0;return String(h)+':'+s.length}
+function lsGet(k){try{return localStorage.getItem(k)}catch(e){return null}}
+function lsSet(k,v){try{localStorage.setItem(k,v)}catch(e){}}
+function clockNow(){var d=new Date();return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')}
+function syncUi(){var b=$('syncbar');if(!b)return;
+ if(!SYNC.pw){b.innerHTML='<span class="mut">☁ Not connected to the server.</span><input type="password" id="sppw" placeholder="Server password" style="max-width:210px" onkeydown="if(event.key==\'Enter\')syncConnect()"><button onclick="syncConnect()">Connect</button>'+(SYNC.msg?'<span class="b">'+esc(SYNC.msg)+'</span>':'');return}
+ var bad=SYNC.state=='error'||SYNC.state=='offline';
+ b.innerHTML='<span class="'+(bad?'b':'g')+'">☁ '+esc(SYNC.msg||'Connected')+'</span><button onclick="syncPull(true)">Refresh from server</button><button onclick="syncOff()">Disconnect</button>'}
+function syncApi(method,body){return fetch('/api/state',{method:method,cache:'no-store',headers:{'content-type':'application/json','x-edit-password':SYNC.pw},body:body?JSON.stringify(body):undefined}).then(function(r){return r.text().then(function(t){var j=null;try{j=JSON.parse(t)}catch(e){}return{status:r.status,json:j}})})}
+function syncConnect(){var el=$('sppw'),pw=el?el.value.trim():'';if(!pw)return;SYNC.pw=pw;SYNC.msg='';syncPull(false)}
+function syncOff(){SYNC.on=false;SYNC.pw='';SYNC.msg='';SYNC.state='idle';lsSet('sp-pw','');syncUi()}
+function adopt(srv,etag){S=Object.assign({parties:[],cands:[],actions:[],history:[],notices:[]},srv);try{reconcile()}catch(e){}
+ lsSet(KEY,JSON.stringify(S));lsSet('sp-etag',etag||'');lsSet('sp-hash',hashStr(JSON.stringify(S)));
+ SYNC.on=true;SYNC.etag=etag||null;SYNC.dirty=false;SYNC.state='ok';SYNC.msg='Loaded the latest data from the server at '+clockNow();render();syncUi()}
+function forceLoad(){syncApi('GET').then(function(r){if(r.json&&r.json.state)adopt(r.json.state,r.json.etag)})}
+function forceKeep(){syncApi('GET').then(function(r){if(r.json&&!r.json.error){SYNC.on=true;SYNC.etag=r.json.etag||null;SYNC.dirty=true;pushNow()}})}
+function syncConflict(msg,load,keep){ask(msg+' Press "Use server data" to load the server\'s version (this PC\'s changes will be replaced). Press Cancel to keep this PC\'s data and overwrite the server.','Use server data',load);MD_NO=keep}
+function syncPull(manual){SYNC.lastCheck=Date.now();SYNC.msg='Checking the server…';SYNC.state='saving';syncUi();
+ syncApi('GET').then(function(r){
+  if(r.status==401){SYNC.pw='';SYNC.on=false;lsSet('sp-pw','');SYNC.state='idle';SYNC.msg='Wrong password.';syncUi();return}
+  if(!r.json||r.status>=500||r.status==404){SYNC.on=false;SYNC.state='offline';SYNC.msg=(r.json&&r.json.error)?r.json.error:'Server not available. Working offline on this PC.';syncUi();return}
+  lsSet('sp-pw',SYNC.pw);
+  var srv=r.json.state,etag=r.json.etag,lh=lsGet('sp-hash'),le=lsGet('sp-etag'),cur=hashStr(JSON.stringify(S)),localDirty=(lh!==cur),hasLocal=!!((S.parties&&S.parties.length)||(S.cands&&S.cands.length));
+  if(!srv){SYNC.on=true;SYNC.etag=null;if(hasLocal){SYNC.dirty=true;pushNow()}else{SYNC.state='ok';SYNC.msg='Connected. Nothing saved on the server yet.';syncUi()}return}
+  if(!lh||!le){if(!hasLocal){adopt(srv,etag);return}
+   syncConflict('This PC already has data and so does the server.',function(){adopt(srv,etag)},function(){SYNC.on=true;SYNC.etag=etag;SYNC.dirty=true;pushNow()});return}
+  if(le==etag){SYNC.on=true;SYNC.etag=etag;if(localDirty){SYNC.dirty=true;pushNow()}else{SYNC.state='ok';SYNC.msg='Saved to server. Last checked at '+clockNow();syncUi()}return}
+  if(!localDirty){adopt(srv,etag);return}
+  syncConflict('Both this PC and the server have changes.',function(){adopt(srv,etag)},function(){SYNC.on=true;SYNC.etag=etag;SYNC.dirty=true;pushNow()})
+ }).catch(function(){SYNC.on=false;SYNC.state='offline';SYNC.msg='Could not reach the server. Working offline on this PC.';syncUi()})}
+function queueSync(){if(!SYNC.on)return;SYNC.dirty=true;SYNC.state='saving';SYNC.msg='Saving…';syncUi();clearTimeout(SYNC.t);SYNC.t=setTimeout(pushNow,1500)}
+function pushNow(){if(SYNC.busy){SYNC.again=true;return}if(!SYNC.dirty)return;SYNC.busy=true;var snap=JSON.stringify(S);
+ syncApi('PUT',{state:S,baseEtag:SYNC.etag}).then(function(r){SYNC.busy=false;
+  if(r.status==200&&r.json&&r.json.ok){SYNC.etag=r.json.etag;lsSet('sp-etag',r.json.etag||'');lsSet('sp-hash',hashStr(snap));
+   SYNC.dirty=(hashStr(JSON.stringify(S))!==hashStr(snap));
+   if(SYNC.dirty){clearTimeout(SYNC.t);SYNC.t=setTimeout(pushNow,500)}else{SYNC.state='ok';SYNC.msg='Saved to server at '+clockNow()}}
+  else if(r.status==409){SYNC.state='error';SYNC.msg='Another PC saved changes first.';syncConflict('Another PC has saved newer changes to the server.',forceLoad,forceKeep)}
+  else if(r.status==401){SYNC.on=false;SYNC.pw='';lsSet('sp-pw','');SYNC.state='idle';SYNC.msg='The password is no longer accepted.'}
+  else{SYNC.state='error';SYNC.msg=(r.json&&r.json.error)||'Could not save. It will retry after your next change. Your data is safe on this PC.'}
+  syncUi();if(SYNC.again){SYNC.again=false;pushNow()}
+ }).catch(function(){SYNC.busy=false;SYNC.state='error';SYNC.msg='Could not reach the server. Your changes are kept on this PC.';syncUi()})}
+function syncInit(){if(typeof window==='undefined')return;SYNC.pw=lsGet('sp-pw')||'';syncUi();if(SYNC.pw)syncPull(false);
+ document.addEventListener('visibilitychange',function(){if(!document.hidden&&SYNC.on&&!SYNC.dirty&&Date.now()-SYNC.lastCheck>60000)syncPull(false)});
+ window.addEventListener('beforeunload',function(e){if(SYNC.on&&SYNC.dirty){e.preventDefault();e.returnValue=''}})}
+/* ===== end server sync ===== */
 try{reconcile()}catch(e){}
-render();fillVoices();if(speechOk())window.speechSynthesis.onvoiceschanged=fillVoices;
+render();syncInit();fillVoices();if(speechOk())window.speechSynthesis.onvoiceschanged=fillVoices;
 </script></body></html>

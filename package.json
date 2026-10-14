@@ -1,0 +1,8 @@
+{
+  "name": "sims4-politics",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@vercel/blob": "latest"
+  }
+}
