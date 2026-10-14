@@ -99,7 +99,7 @@ textarea{font:inherit;color:var(--tx);background:var(--card);border:1px solid va
 <div class="row"><label>Reading voice <select id="vs" onchange="setVoice(this.value)"></select></label><label>Speed <select id="vr" onchange="setRate(this.value)"><option value="0.75">Slow</option><option value="0.9">Relaxed</option><option value="1" selected>Normal</option><option value="1.1">Brisk</option><option value="1.25">Fast</option><option value="1.5">Very fast</option></select></label><button onclick="testVoice()">🔊 Test voice</button><button onclick="stopRead()">⏹ Stop</button></div>
 <div class="row"><input id="bt" placeholder="Bill title" maxlength="120"></div>
 <div class="row"><textarea id="bd" rows="3" placeholder="What does this bill do?"></textarea></div>
-<div class="mut" style="margin-bottom:6px">A bill can only be introduced by the member whose role is the subject of the bill, for example the Police Minister for a bill on police checks. They must also hold a seat in the Senate or the House. Members who hold the role but are Unseated are greyed out until they are seated.</div>
+<div class="mut" style="margin-bottom:6px">A bill on a ministry's subject can only be introduced by the member whose role that is, for example the Police Minister for a bill on police checks. For anything that does not belong to one ministry, choose <b>General</b>, which any seated member can introduce. The sponsor must hold a seat in the Senate or the House. Members who hold a role but are Unseated are greyed out until they are seated.</div>
 <div class="row"><select id="bs" onchange="syncBp()"></select><select id="bp" title="Subject of the bill (the sponsor's role)"></select><button class="p" onclick="addBill()">Introduce in the House</button></div>
 <div id="bnote" class="mut" style="margin-top:4px"></div></div>
 <div id="bills"></div></div>
@@ -351,12 +351,12 @@ function initDraft(b){var ch=chOf(b),st={},vt={};S.parties.forEach(function(p){s
 function selHtml(v,on){return'<select onchange="'+on+'">'+['For','Against','Abstain'].map(function(o){return'<option'+(o==v?' selected':'')+'>'+o+'</option>'}).join('')+'</select>'}
 function addBill(){var t=$('bt').value.trim(),d=$('bd').value.trim(),sid=$('bs').value;
  if(!t){alert('Give the bill a title.');return}
- if(!sid){alert('Choose a sponsor. Only a seated member whose role is the subject of the bill can introduce it.');return}
- var c=S.cands.find(function(x){return x.id==sid}),pf=$('bp').value;if(c&&!pf){alert(c.name+' does not hold a portfolio role, so cannot introduce a bill. A bill can only be introduced by the member whose role is the subject of the bill.');return}
+ if(!sid){alert('Choose a sponsor. Only a seated member can introduce a bill.');return}
+ var c=S.cands.find(function(x){return x.id==sid}),pf=$('bp').value||'General'
  var why=sponsorWhy(c,pf);if(why){alert(why);return}
  var g=govId(),typ=!g?'Unclassified':c.partyId==g?'Government':(c.partyId==S.oppId?'Opposition':'Crossbench');
  S.billNo=(S.billNo||0)+1;
- bl().push({id:uid(),no:'Bill '+String(S.billNo).padStart(3,'0'),title:t,desc:d,sponsorId:sid,sponsor:c.name,partyId:c.partyId,type:typ,portfolio:$('bp').value,date:today(),stage:'House',record:[],amend:''});
+ bl().push({id:uid(),no:'Bill '+String(S.billNo).padStart(3,'0'),title:t,desc:d,sponsorId:sid,sponsor:c.name,partyId:c.partyId,type:typ,portfolio:pf,date:today(),stage:'House',record:[],amend:''});
  $('bt').value='';$('bd').value='';save()}
 function delBill(id){var b=bill(id);if(!b)return;ask('Remove '+b.no+': '+b.title+'?','Remove',function(){S.bills=bl().filter(function(x){return x.id!=id});save()})}
 function setVote(id,cid,v){var b=bill(id);b.draft.votes[cid]=v;save()}
@@ -479,14 +479,14 @@ function byParty(a,b){var pa=(party(a.partyId)||{}).name||'',pb=(party(b.partyId
 function sponsorList(pf){var subj=pf&&pf!='General';return S.cands.filter(function(c){return c.status=='active'&&c.partyId&&(subj?sponsorRoles(c).indexOf(pf)>=0:isSeated(c))&&!sponsorWhy(c,pf)}).sort(byParty)}
 function sponsorOpts(pf){return sponsorList(pf).map(function(c){return'<option value="'+c.id+'">'+esc(c.name)+' ('+esc((party(c.partyId)||{}).name||'—')+' · '+c.seat+(pf&&pf!='General'?'':' · '+esc(c.primary||'no role'))+')</option>'}).join('')}
 function noSponsorMsg(pf){return'<span class="mut">'+(pf&&pf!='General'?'Nobody who holds the '+esc(pf)+' role currently has a seat in the Senate or the House, so nobody can introduce a bill on it yet.':'No members hold seats yet, so nobody can sponsor a bill.')+'</span>'}
-function lbl(c){var r=[c.primary,c.secondary].filter(Boolean).join(' / ');return c.name+' ('+((party(c.partyId)||{}).name||'—')+' · '+(c.seat||'no seat')+' · '+r+')'}
-function fillBillForm(){var bs=$('bs'),sv=bs.value,all=S.cands.filter(function(c){return c.status=='active'&&c.partyId&&sponsorRoles(c).length}).sort(byParty),ok=all.filter(function(c){return isSeated(c)}),no=all.filter(function(c){return !isSeated(c)});
- bs.innerHTML=ok.length?ok.map(function(c){return'<option value="'+c.id+'">'+esc(lbl(c))+'</option>'}).join('')+no.map(function(c){return'<option value="" disabled>'+esc(lbl(c))+' — cannot sponsor until seated</option>'}).join(''):'<option value="">No seated member holds a portfolio role</option>'+no.map(function(c){return'<option value="" disabled>'+esc(lbl(c))+' — cannot sponsor until seated</option>'}).join('');
+function lbl(c){var r=[c.primary,c.secondary].filter(Boolean).join(' / ');return c.name+' ('+((party(c.partyId)||{}).name||'—')+' · '+(c.seat||'no seat')+' · '+(r||'no role')+')'}
+function fillBillForm(){var bs=$('bs'),sv=bs.value,all=S.cands.filter(function(c){return c.status=='active'&&c.partyId}).sort(byParty),ok=all.filter(function(c){return isSeated(c)}),no=all.filter(function(c){return !isSeated(c)&&sponsorRoles(c).length});
+ bs.innerHTML=ok.length?ok.map(function(c){return'<option value="'+c.id+'">'+esc(lbl(c))+'</option>'}).join('')+no.map(function(c){return'<option value="" disabled>'+esc(lbl(c))+' — cannot sponsor until seated</option>'}).join(''):'<option value="">No seated members yet</option>'+no.map(function(c){return'<option value="" disabled>'+esc(lbl(c))+' — cannot sponsor until seated</option>'}).join('');
  if(ok.some(function(c){return c.id==sv}))bs.value=sv;else if(ok.length)bs.value=ok[0].id;
  $('bnote').innerHTML=no.length?'Cannot introduce a bill yet (not in the Senate or the House): '+no.map(function(c){return'<b>'+esc(c.name)+'</b> ('+esc(sponsorRoles(c).join(' / '))+')'}).join(', ')+'.':'';
  if(bs.value!==lastBs)syncBp();else fillSubjects()}
 function fillSubjects(){var c=S.cands.find(function(x){return x.id==$('bs').value}),bp=$('bp'),v=bp.value,rs=c?sponsorRoles(c):[];
- bp.innerHTML=rs.length?rs.map(function(r){return'<option>'+esc(r)+'</option>'}).join(''):'<option value="">—</option>';if(rs.indexOf(v)>=0)bp.value=v}
+ bp.innerHTML=rs.concat(['General']).map(function(r){return'<option>'+esc(r)+'</option>'}).join('');if(rs.concat(['General']).indexOf(v)>=0)bp.value=v}
 function newBill(t,d,sid,pf,x){var c=S.cands.find(function(y){return y.id==sid});if(!c)return null;var why=sponsorWhy(c,pf);if(why){alert(why);return null}var g=govId(),typ=!g?'Unclassified':c.partyId==g?'Government':(c.partyId==S.oppId?'Opposition':'Crossbench');
  S.billNo=(S.billNo||0)+1;var nb={id:uid(),no:'Bill '+String(S.billNo).padStart(3,'0'),title:t,desc:d,sponsorId:sid,sponsor:c.name,partyId:c.partyId,type:typ,portfolio:pf||'General',date:today(),stage:'House',record:[],amend:''};
  Object.keys(x||{}).forEach(function(k){nb[k]=x[k]});bl().push(nb);return nb}
