@@ -36,7 +36,9 @@ tr.brow{cursor:pointer}tr.brow:hover{background:var(--bg)}
 .fa{display:flex;flex-direction:column;align-items:center;color:var(--ac);flex:none}.fa small{color:var(--mut);font-size:11px}
 @media(max-width:640px){.flow{flex-direction:column;align-items:stretch}.fb{max-width:none;flex:none}.fa svg{transform:rotate(90deg);margin:6px 0}}
 .hide{display:none}
+.pk{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:5px 0;cursor:pointer}.pk input{flex:none}
 .mo{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:50;padding:16px}.mo.hide{display:none}
+.pk{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:5px 0;cursor:pointer}.pk input{flex:none}
 .mb{background:var(--card);color:var(--tx);border:1px solid var(--bd);border-radius:10px;padding:16px;max-width:440px;width:100%}.mb p{margin:0 0 12px}
 textarea{font:inherit;color:var(--tx);background:var(--card);border:1px solid var(--bd);border-radius:6px;padding:6px 8px;width:100%}
 .lane{padding:8px 0;border-top:1px solid var(--bd)}.seat{width:26px;height:26px;border:2px solid var(--bd);border-radius:6px;display:inline-block;margin:4px 4px 4px 0;transition:background .3s}
@@ -115,6 +117,20 @@ textarea{font:inherit;color:var(--tx);background:var(--card);border:1px solid va
 <div id="bills"></div></div>
 </div>
 
+<div id="justice" class="hide">
+<div class="row" style="margin:0 0 8px;align-items:center"><button onclick="go('')">← Home</button><b>⚖️ Law &amp; Justice</b><span class="mut" id="jfoot"></span></div>
+<div class="tabs"><button class="t on" id="jt1" onclick="jtab(1)">SCPD register</button><button class="t" id="jt2" onclick="jtab(2)">Record a case</button><button class="t" id="jt3" onclick="jtab(3)">Cases at court</button></div>
+<div id="jv1">
+ <div class="card"><h2>Register a police officer</h2><div class="row"><input id="jon" placeholder="Officer name"><input id="job" placeholder="Badge #" style="max-width:100px"></div>
+ <div class="row"><select id="jor"></select><select id="jol"></select><button class="p" onclick="addOfficer()">Add officer</button></div></div>
+ <div class="card"><h2>SCPD officers</h2><div id="jOfficers"></div></div>
+ <div class="card"><div class="row" style="justify-content:space-between"><h2 style="margin:0">Judges</h2><button onclick="$('jjf').classList.toggle('hide')">Add judge</button></div>
+ <div id="jjf" class="row hide" style="margin-top:8px"><input id="jjn" placeholder="Judge name"><select id="jjt"></select><input id="jjc" placeholder="Court (optional)"><button class="p" onclick="addJudge()">Save judge</button></div>
+ <div id="jJudges" style="margin-top:8px"></div></div>
+</div>
+<div id="jv2" class="hide"><div id="jform"></div></div>
+<div id="jv3" class="hide"><div id="jCases"></div></div>
+</div>
 <script>
 var S={parties:[],cands:[],actions:[],history:[]},KEY='election-framework-v1',MAX=8;
 try{var l=localStorage.getItem(KEY);if(l)S=JSON.parse(l)}catch(e){}
@@ -123,7 +139,7 @@ function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){retur
 function $(i){return document.getElementById(i)}
 function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6)}
 var MD_FN=null,MD_NO=null;
-function ask(msg,label,fn,single){$('mdMsg').innerHTML=esc(msg);$('mdOk').textContent=label||'OK';$('mdNo').classList.toggle('hide',!!single);MD_FN=fn||null;MD_NO=null;$('md').classList.remove('hide')}
+function ask(msg,label,fn,single){$('mdNo').textContent='Cancel';$('mdMsg').innerHTML=esc(msg);$('mdOk').textContent=label||'OK';$('mdNo').classList.toggle('hide',!!single);MD_FN=fn||null;MD_NO=null;$('md').classList.remove('hide')}
 function mdYes(){var f=MD_FN;MD_FN=null;MD_NO=null;$('md').classList.add('hide');if(f)f()}
 function mdNo(){var f=MD_NO;MD_NO=null;MD_FN=null;$('md').classList.add('hide');if(f)f()}
 function note(m){ask(String(m),'OK',null,true)}
@@ -674,6 +690,7 @@ function memberRow(c,assignable){
  return h+(c.secondary?'<button onclick="swapRoles(\''+c.id+'\')" title="Swap primary and secondary roles">⇄ Swap</button>':'')+'<button onclick="edit(\''+c.id+'\')">Edit</button>'+(c.partyId?'<button onclick="releaseCand(\''+c.id+'\')" title="Move to the Unassigned pool">Release</button>':'')+'<select id="r'+c.id+'"><option>Death</option><option>Resigned</option><option>Retired</option></select><button class="d" onclick="rmCand(\''+c.id+'\')">Remove</button></div></div>'}
 
 function render(){
+ try{jRender()}catch(e){}
  refreshRoleLists();$('rolesTbl').innerHTML=rolesView();$('officeRolesTbl').innerHTML=officeRolesView();
  $('ev').value=S.eligible||'';$('opp').innerHTML=oppView();$('parl').innerHTML=parlView();
  $('notices').innerHTML=(S.notices&&S.notices.length)?S.notices.slice().reverse().map(function(n){return'<div class="m"><div><span class="badge '+(n.type=='Death'?'b':'mut')+'">'+esc(n.type)+'</span> '+esc(n.text)+'</div><small class="mut">'+esc(n.date)+'</small></div>'}).join(''):'<span class="mut">No notices yet.</span>';
@@ -796,14 +813,131 @@ function commitElection(w,mayor){var d=new Date().toLocaleDateString();
 (function(){var ch=false,d=today();S.cands.forEach(function(c){if(c.status=='active'&&/^Opposition /i.test(c.primary||'')&&c.secondary&&!/^Opposition /i.test(c.secondary)&&rbase(c.primary)==rbase(c.secondary)&&c.base&&rbase(c.base)!=rbase(c.primary)){setRoles(c,c.primary,c.base,d);ch=true}});if(ch){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}})();
 
 
+/* ===== Law & Justice ===== */
+var RANKS=['Chief of Police','Deputy Chief','Commander','Captain','Lieutenant','Sergeant','Detective','Officer','Cadet'],
+ PROLES=['Patrol','Detective / Investigations','Forensics / Crime scene','Evidence custodian','Traffic','K9 unit','SWAT / Tactical','Dispatch','Community liaison','Internal affairs','Other'],
+ CRIMES=['Theft / burglary','Assault','Fraud','Vandalism','Arson','Drugs','Trespass','Traffic offence','Murder / death','Missing person','Other'],
+ JTITLES=['Judge','Chief Judge','Magistrate'],
+ JD_TAB=1;
+function jx(){var j=S.justice=S.justice||{};j.officers=j.officers||[];j.judges=j.judges||[];j.cases=j.cases||[];j.caseNo=j.caseNo||0;return j}
+function jdraft(){var j=jx();if(!j.draft)j.draft=jBlank();return j.draft}
+function jBlank(){return{id:uid(),offence:'',crime:'',reportedBy:'',reportedDate:today(),incidentDate:'',location:'',attending:[],lead:'',desc:'',photos:[],suspects:[],lawId:'',warrant:false,w:{addr:'',judgeId:'',issued:today(),expiry:'',reason:'',items:'',officers:[],result:''}}}
+function jsaveQuiet(){persist();try{queueSync()}catch(e){}}
+function jOff(id){return jx().officers.find(function(o){return o.id==id})}
+function jJudge(id){return jx().judges.find(function(o){return o.id==id})}
+function offName(id){var o=jOff(id);return o?o.name+(o.badge?' (#'+o.badge+')':''):'Unknown officer'}
+function jtab(n){JD_TAB=n;for(var i=1;i<=3;i++){var v=$('jv'+i),t=$('jt'+i);if(v)v.classList.toggle('hide',n!=i);if(t)t.classList.toggle('on',n==i)}}
+function jUsed(id){var j=jx(),u=false;(j.cases.concat(j.draft?[j.draft]:[])).forEach(function(c){if((c.attending||[]).indexOf(id)>=0||c.lead==id||((c.w||{}).officers||[]).indexOf(id)>=0||(c.w||{}).judgeId==id||c.judgeId==id)u=true});return u}
+/* register */
+function addOfficer(){var n=$('jon').value.trim();if(!n){note('Enter the officer\'s name.');return}
+ var b=$('job').value.trim();if(b&&jx().officers.some(function(o){return o.badge==b})){note('Badge number '+b+' is already registered.');return}
+ jx().officers.push({id:uid(),name:n,badge:b,rank:$('jor').value,role:$('jol').value,status:'Active',added:today()});
+ $('jon').value='';$('job').value='';save()}
+function addJudge(){var n=$('jjn').value.trim();if(!n){note('Enter the judge\'s name.');return}
+ jx().judges.push({id:uid(),name:n,title:$('jjt').value,court:$('jjc').value.trim(),status:'Active',added:today()});
+ $('jjn').value='';$('jjc').value='';$('jjf').classList.add('hide');save()}
+function setOffStatus(id,v){var o=jOff(id);if(o){o.status=v;save()}}
+function setJudgeStatus(id,v){var o=jJudge(id);if(o){o.status=v;save()}}
+function editOfficer(id){var o=jOff(id);if(!o)return;JED=id;save()}
+var JED=null;
+function saveOfficer(id){var o=jOff(id);if(!o)return;var n=$('eon').value.trim();if(!n){note('Name cannot be empty.');return}
+ var b=$('eob').value.trim();if(b&&jx().officers.some(function(x){return x.id!=id&&x.badge==b})){note('Badge number '+b+' is already registered.');return}
+ o.name=n;o.badge=b;o.rank=$('eor').value;o.role=$('eol').value;JED=null;save()}
+function delOfficer(id){if(jUsed(id)){note('This officer is attached to a case, so they cannot be deleted. Set their status to Retired or Suspended instead.');return}
+ ask('Remove '+offName(id)+' from the register?','Remove',function(){var j=jx();j.officers=j.officers.filter(function(o){return o.id!=id});save()})}
+function delJudge(id){if(jUsed(id)){note('This judge is on a warrant or court case, so they cannot be deleted. Set their status to Retired instead.');return}
+ ask('Remove '+(jJudge(id)||{}).name+'?','Remove',function(){var j=jx();j.judges=j.judges.filter(function(o){return o.id!=id});save()})}
+function jopts(arr,sel){return arr.map(function(r){return'<option'+(r==sel?' selected':'')+'>'+esc(r)+'</option>'}).join('')}
+function officerRows(){var j=jx();if(!j.officers.length)return'<div class="mut">No officers registered yet.</div>';
+ return j.officers.map(function(o){if(JED==o.id)return'<div class="m"><div class="row" style="width:100%"><input id="eon" value="'+esc(o.name)+'" placeholder="Name"><input id="eob" value="'+esc(o.badge)+'" placeholder="Badge #" style="max-width:100px"><select id="eor">'+jopts(RANKS,o.rank)+'</select><select id="eol">'+jopts(PROLES,o.role)+'</select><button class="p" onclick="saveOfficer(\''+o.id+'\')">Save</button><button onclick="JED=null;save()">Cancel</button></div></div>';
+  return'<div class="m"><div><b>'+esc(o.name)+'</b>'+(o.badge?' <span class="badge">#'+esc(o.badge)+'</span>':'')+' <span class="badge">'+esc(o.rank)+'</span> <span class="badge">'+esc(o.role)+'</span>'+(o.status!='Active'?' <span class="badge b">'+esc(o.status)+'</span>':'')+'</div><div class="row" style="margin:0"><select onchange="setOffStatus(\''+o.id+'\',this.value)">'+jopts(['Active','Suspended','Retired'],o.status)+'</select><button onclick="editOfficer(\''+o.id+'\')">Edit</button><button onclick="delOfficer(\''+o.id+'\')">Remove</button></div></div>'}).join('')}
+function judgeRows(){var j=jx();if(!j.judges.length)return'<div class="mut">No judges added yet.</div>';
+ return j.judges.map(function(o){return'<div class="m"><div><b>'+esc(o.name)+'</b> <span class="badge">'+esc(o.title)+'</span>'+(o.court?' <span class="badge">'+esc(o.court)+'</span>':'')+(o.status!='Active'?' <span class="badge b">'+esc(o.status)+'</span>':'')+'</div><div class="row" style="margin:0"><select onchange="setJudgeStatus(\''+o.id+'\',this.value)">'+jopts(['Active','Retired'],o.status)+'</select><button onclick="delJudge(\''+o.id+'\')">Remove</button></div></div>'}).join('')}
+/* case form */
+function dset(k,v){jdraft()[k]=v;jsaveQuiet()}
+function wset(k,v){jdraft().w[k]=v;jsaveQuiet()}
+function toggleIn(arr,id){var i=arr.indexOf(id);if(i>=0)arr.splice(i,1);else arr.push(id)}
+function dAtt(id){var d=jdraft();toggleIn(d.attending,id);if(d.lead==id&&d.attending.indexOf(id)<0)d.lead=d.attending[0]||'';if(!d.lead&&d.attending.length)d.lead=d.attending[0];jsaveQuiet();jFormRender()}
+function dLead(id){jdraft().lead=id;jsaveQuiet();jFormRender()}
+function dWOff(id){toggleIn(jdraft().w.officers,id);jsaveQuiet();jFormRender()}
+function dWarrant(on){jdraft().warrant=!!on;jsaveQuiet();jFormRender()}
+function addSuspect(){var n=$('jsn').value.trim();if(!n){note('Enter the suspect\'s name.');return}
+ jdraft().suspects.push({id:uid(),name:n,info:$('jsi').value.trim(),status:'To be interviewed',notes:''});$('jsn').value='';$('jsi').value='';jsaveQuiet();jFormRender()}
+function sset(id,k,v){var s=jdraft().suspects.find(function(x){return x.id==id});if(s){s[k]=v;jsaveQuiet()}}
+function delSuspect(id){var d=jdraft();d.suspects=d.suspects.filter(function(x){return x.id!=id});jsaveQuiet();jFormRender()}
+function readEvidence(inp){var fs=inp&&inp.files?Array.prototype.slice.call(inp.files):[],d=jdraft();if(!fs.length)return;
+ var room=8-d.photos.length;if(room<=0){note('A case can hold up to 8 photos.');inp.value='';return}
+ if(fs.length>room){note('Only '+room+' more photo(s) fit on this case. The rest were skipped.');fs=fs.slice(0,room)}
+ var left=fs.length;fs.forEach(function(f){var r=new FileReader();r.onload=function(){var im=new Image();im.onload=function(){var m=Math.max(im.width,im.height),k=m>800?800/m:1,cv=document.createElement('canvas');cv.width=Math.round(im.width*k);cv.height=Math.round(im.height*k);cv.getContext('2d').drawImage(im,0,0,cv.width,cv.height);
+   d.photos.push({id:uid(),img:cv.toDataURL('image/jpeg',0.6),caption:'',by:d.lead||'',when:today()});if(--left==0){inp.value='';jsaveQuiet();jFormRender()}};
+  im.onerror=function(){if(--left==0){inp.value='';jsaveQuiet();jFormRender()}};im.src=r.result};r.onerror=function(){--left};r.readAsDataURL(f)})}
+function pset(id,k,v){var p=jdraft().photos.find(function(x){return x.id==id});if(p){p[k]=v;jsaveQuiet()}}
+function delPhoto(id){var d=jdraft();d.photos=d.photos.filter(function(x){return x.id!=id});jsaveQuiet();jFormRender()}
+function offPick(sel,fn,lead){var os=jx().officers.filter(function(o){return o.status=='Active'||sel.indexOf(o.id)>=0});
+ if(!os.length)return'<div class="mut">No officers registered yet. Add them on the Register tab.</div>';
+ return os.map(function(o){var on=sel.indexOf(o.id)>=0;return'<label class="pk"><input type="checkbox"'+(on?' checked':'')+' onchange="'+fn+'(\''+o.id+'\')" style="flex:none"> '+esc(o.name)+(o.badge?' #'+esc(o.badge):'')+' <span class="mut">'+esc(o.rank)+' · '+esc(o.role)+'</span>'+(lead&&on?' <button type="button" class="'+(jdraft().lead==o.id?'p':'')+'" onclick="event.preventDefault();dLead(\''+o.id+'\')">'+(jdraft().lead==o.id?'Lead officer':'Make lead')+'</button>':'')+'</label>'}).join('')}
+function jFormRender(){var d=jdraft(),f=$('jform');if(!f)return;
+ var laws=bl().filter(function(b){return b.stage=='Law'&&!b.repealed});
+ f.innerHTML='<div class="card"><h2>1. The report</h2>'
+ +'<div class="row"><select onchange="dset(\'crime\',this.value)"><option value="">Type of crime…</option>'+jopts(CRIMES,d.crime)+'</select></div>'
+ +'<div class="row"><input placeholder="Reported by (victim / witness / caller)" value="'+esc(d.reportedBy)+'" oninput="dset(\'reportedBy\',this.value)"></div>'
+ +'<div class="row"><label class="mut">Date reported to police <input type="date" value="'+esc(d.reportedDate)+'" onchange="dset(\'reportedDate\',this.value)"></label><label class="mut">Date of incident <input type="date" value="'+esc(d.incidentDate)+'" onchange="dset(\'incidentDate\',this.value)"></label></div>'
+ +'<div class="row"><input placeholder="Location of the crime" value="'+esc(d.location)+'" oninput="dset(\'location\',this.value)"></div>'
+ +'<div class="row"><label class="mut" style="width:100%">Law allegedly broken (optional, from laws passed)<select style="width:100%" onchange="dset(\'lawId\',this.value)"><option value="">Not linked / not sure yet</option>'+laws.map(function(b){return'<option value="'+b.id+'"'+(d.lawId==b.id?' selected':'')+'>#'+esc(b.no)+' '+esc(b.title)+'</option>'}).join('')+'</select></label></div>'
+ +'<h3>Attending officer(s)</h3>'+offPick(d.attending,'dAtt',true)
+ +'<h3>What happened</h3><div class="row"><textarea rows="5" maxlength="4000" placeholder="Describe what happened, in the order it happened. Include who was involved, what was seen or heard, and the state of the scene on arrival." oninput="dset(\'desc\',this.value)">'+esc(d.desc)+'</textarea></div></div>'
+ +'<div class="card"><h2>2. Photographic evidence</h2><div class="mut" style="margin-bottom:6px">Photos are shrunk to save space (up to 8 per case). Add a caption and who took each one.</div>'
+ +'<div class="row"><input type="file" accept="image/*" multiple onchange="readEvidence(this)"></div>'
+ +(d.photos.length?d.photos.map(function(p){return'<div class="row" style="align-items:flex-start"><img src="'+esc(p.img)+'" alt="Evidence photo" style="width:96px;height:96px;object-fit:cover;border-radius:6px;flex:none"><div style="flex:1 1 200px"><input placeholder="Caption: what does this show, and where?" value="'+esc(p.caption)+'" oninput="pset(\''+p.id+'\',\'caption\',this.value)" style="width:100%;margin-bottom:6px"><select onchange="pset(\''+p.id+'\',\'by\',this.value)"><option value="">Taken by…</option>'+jx().officers.map(function(o){return'<option value="'+o.id+'"'+(p.by==o.id?' selected':'')+'>'+esc(o.name)+'</option>'}).join('')+'</select> <button onclick="delPhoto(\''+p.id+'\')">Remove</button></div></div>'}).join(''):'<div class="mut">No photos added.</div>')+'</div>'
+ +'<div class="card"><h2>3. Suspects to be interviewed</h2><div class="row"><input id="jsn" placeholder="Suspect name"><input id="jsi" placeholder="Details (address, link to the crime…)"><button onclick="addSuspect()">Add suspect</button></div>'
+ +(d.suspects.length?d.suspects.map(function(s){return'<div class="m" style="align-items:flex-start"><div style="flex:1 1 220px"><b>'+esc(s.name)+'</b> <span class="mut">'+esc(s.info)+'</span><textarea rows="2" placeholder="Interview notes / statement / alibi" style="margin-top:6px" oninput="sset(\''+s.id+'\',\'notes\',this.value)">'+esc(s.notes)+'</textarea></div><div class="row" style="margin:0"><select onchange="sset(\''+s.id+'\',\'status\',this.value)">'+jopts(['To be interviewed','Interviewed','Declined to talk','Arrested','Charged','Cleared'],s.status)+'</select><button onclick="delSuspect(\''+s.id+'\')">Remove</button></div></div>'}).join(''):'<div class="mut">No suspects listed.</div>')+'</div>'
+ +'<div class="card"><h2>4. Search warrant</h2><label class="pk"><input type="checkbox" '+(d.warrant?'checked':'')+' onchange="dWarrant(this.checked)" style="flex:none"> Issue a search warrant for this case</label>'
+ +(d.warrant?'<div class="row" style="margin-top:8px"><input placeholder="Place to be searched (address / vehicle / person)" value="'+esc(d.w.addr)+'" oninput="wset(\'addr\',this.value)"></div>'
+  +'<div class="row"><select onchange="wset(\'judgeId\',this.value)"><option value="">Issuing judge…</option>'+jx().judges.filter(function(g){return g.status=='Active'||g.id==d.w.judgeId}).map(function(g){return'<option value="'+g.id+'"'+(d.w.judgeId==g.id?' selected':'')+'>'+esc(g.title+' '+g.name)+'</option>'}).join('')+'</select><label class="mut">Issued <input type="date" value="'+esc(d.w.issued)+'" onchange="wset(\'issued\',this.value)"></label><label class="mut">Expires <input type="date" value="'+esc(d.w.expiry)+'" onchange="wset(\'expiry\',this.value)"></label></div>'
+  +'<h3>Officer(s) conducting the search</h3>'+offPick(d.w.officers,'dWOff',false)
+  +'<h3>Reason / evidence supporting the warrant</h3><details class="mut" style="margin-bottom:6px"><summary>What a good reason covers</summary><ul style="margin:6px 0 6px 18px;padding:0"><li>What is believed to be at the place, and what crime it relates to</li><li>Why: what was seen, heard or found (photos, witness statements, informant)</li><li>The link between the suspect and the place</li><li>Why the items will still be there, and why now (risk of them being destroyed)</li><li>Whether anything less intrusive was tried or ruled out</li></ul></details>'
+  +'<div class="row"><textarea rows="5" maxlength="3000" placeholder="Reasonable grounds for the search" oninput="wset(\'reason\',this.value)">'+esc(d.w.reason)+'</textarea></div>'
+  +'<div class="row"><textarea rows="2" maxlength="1500" placeholder="Items to be searched for / seized" oninput="wset(\'items\',this.value)">'+esc(d.w.items)+'</textarea></div>'
+  +'<div class="row"><textarea rows="2" maxlength="2000" placeholder="Result of the search: what was found / seized (fill in after the search)" oninput="wset(\'result\',this.value)">'+esc(d.w.result)+'</textarea></div>':'')+'</div>'
+ +'<div class="row"><button class="p" onclick="submitCase()">Submit case to trial</button><button onclick="clearDraft()">Clear form</button><span class="mut">Your draft saves as you type.</span></div>'}
+function clearDraft(){ask('Clear this case form and start again?','Clear',function(){jx().draft=null;save();jFormRender()})}
+function submitCase(){var d=jdraft(),m=[];
+ if(!d.crime)m.push('the type of crime');if(!d.reportedDate)m.push('the date reported to police');if(!d.location.trim())m.push('the location');
+ if(!d.attending.length)m.push('at least one attending officer');if(!d.desc.trim())m.push('a description of what happened');if(!d.suspects.length)m.push('at least one suspect');
+ if(d.warrant){if(!d.w.addr.trim())m.push('the place to be searched');if(!d.w.judgeId)m.push('the issuing judge');if(!d.w.officers.length)m.push('the officer(s) conducting the search');if(!d.w.reason.trim())m.push('the reason supporting the warrant')}
+ if(m.length){note('Before this can go to trial, please add: '+m.join(', ')+'.');return}
+ if(JSON.stringify(S).length>3400000){note('Saved data is nearly full (the server limit is about 4 MB). Remove some photos before submitting.');return}
+ ask('Confirming you have gathered all the evidence for the case to go to trial.','Yes',function(){var j=jx(),c=j.draft||d;j.caseNo++;
+  c.no=j.caseNo;c.ref='SCPD-'+String(j.caseNo).padStart(4,'0');c.submitted=today();c.status='Awaiting trial';c.judgeId='';c.courtDate='';c.outcome='';
+  j.cases.push(c);j.draft=null;JD_TAB=3;save();jFormRender();jtab(3)});
+ $('mdNo').textContent='No'}
+function setCourt(id,k,v){var c=jx().cases.find(function(x){return x.id==id});if(c){c[k]=v;if(k=='judgeId'&&v&&c.status=='Awaiting trial')c.status='Judge assigned';save()}}
+function caseCard(c){var l=c.lawId?bill(c.lawId):null,w=c.w||{};
+ return'<div class="card"><div class="row" style="justify-content:space-between"><h2 style="margin:0">'+esc(c.ref)+' · '+esc(c.crime)+'</h2><span class="badge strong">'+esc(c.status)+'</span></div>'
+ +'<div class="mut">Reported '+esc(c.reportedDate)+(c.incidentDate?' · Incident '+esc(c.incidentDate):'')+' · '+esc(c.location)+(c.reportedBy?' · By '+esc(c.reportedBy):'')+' · Sent to trial '+esc(c.submitted)+'</div>'
+ +(l?'<div style="margin-top:4px">Law: '+bref(l.id,l.no)+' '+esc(l.title)+'</div>':'')
+ +'<div style="margin-top:4px"><b>Officers:</b> '+(c.attending||[]).map(function(i){return esc(offName(i))+(c.lead==i?' (lead)':'')}).join(', ')+'</div>'
+ +'<div style="white-space:pre-wrap;margin:6px 0">'+esc(c.desc)+'</div>'
+ +(c.suspects&&c.suspects.length?'<div><b>Suspects:</b> '+c.suspects.map(function(s){return esc(s.name)+' ('+esc(s.status)+')'}).join(', ')+'</div>':'')
+ +(c.photos&&c.photos.length?'<div class="row" style="margin-top:6px">'+c.photos.map(function(p){return'<figure style="margin:0;width:110px"><img src="'+esc(p.img)+'" alt="Evidence" style="width:110px;height:110px;object-fit:cover;border-radius:6px"><figcaption class="mut" style="font-size:12px">'+esc(p.caption)+'</figcaption></figure>'}).join('')+'</div>':'')
+ +(c.warrant?'<details style="margin-top:6px"><summary>Search warrant · '+esc(w.addr)+'</summary><div class="mut" style="white-space:pre-wrap">Judge: '+esc((jJudge(w.judgeId)||{}).name||'')+' · Issued '+esc(w.issued)+(w.expiry?' · Expires '+esc(w.expiry):'')+'\nSearch by: '+(w.officers||[]).map(offName).map(esc).join(', ')+'\nReason: '+esc(w.reason)+(w.items?'\nItems sought: '+esc(w.items):'')+(w.result?'\nResult: '+esc(w.result):'')+'</div></details>':'')
+ +'<div class="row" style="margin-top:8px"><label class="mut">Judge <select onchange="setCourt(\''+c.id+'\',\'judgeId\',this.value)"><option value="">Unassigned</option>'+jx().judges.filter(function(g){return g.status=='Active'||g.id==c.judgeId}).map(function(g){return'<option value="'+g.id+'"'+(c.judgeId==g.id?' selected':'')+'>'+esc(g.title+' '+g.name)+'</option>'}).join('')+'</select></label><label class="mut">Court date <input type="date" value="'+esc(c.courtDate)+'" onchange="setCourt(\''+c.id+'\',\'courtDate\',this.value)"></label><select onchange="setCourt(\''+c.id+'\',\'status\',this.value)">'+jopts(['Awaiting trial','Judge assigned','In trial','Verdict given','Dismissed'],c.status)+'</select></div></div>'}
+function jRender(){if(!$('jv1'))return;var j=jx();
+ $('jOfficers').innerHTML=officerRows();$('jJudges').innerHTML=judgeRows();
+ $('jCases').innerHTML=j.cases.length?j.cases.slice().reverse().map(caseCard).join(''):'<div class="card mut">No cases have been sent to trial yet.</div>';
+ var a=document.activeElement;if(!(a&&$('jform')&&$('jform').contains(a)))jFormRender();
+ $('jfoot').textContent=j.officers.length+' officer(s) · '+j.judges.length+' judge(s) · '+j.cases.length+' case(s) at court'}
+/* ===== end Law & Justice ===== */
+(function(){var a=$("jor"),b=$("jol"),c=$("jjt");if(a){a.innerHTML=jopts(RANKS,"Officer");b.innerHTML=jopts(PROLES,"Patrol");c.innerHTML=jopts(JTITLES,"Judge")}})();
+
 /* ===== Home page ===== */
 var MODULES=[
  {k:'government',icon:'🏛️',name:'Government',ready:true,desc:function(){var m=mayorC(),g=govId(),gp=g?party(g):null;return m?'Mayor: '+m.name+(gp?' · '+gp.name+' governs':''):(S.parties.length?S.parties.length+' part'+(S.parties.length==1?'y':'ies')+' set up':'Parties, elections, Parliament and bills')}},
- {k:'justice',icon:'⚖️',name:'Law & Justice',ready:false,soonMsg:'Law & Justice is coming soon. This is where police will list crimes and keep a watch list.',desc:function(){return'Crimes, watch list and police'}}];
+ {k:'justice',icon:'⚖️',name:'Law & Justice',ready:true,desc:function(){var j=jx();return j.cases.length||j.officers.length?j.officers.length+' officer(s) · '+j.cases.length+' case(s) at court':'SCPD officers, crime cases and court'}}];
 function homeRefresh(){var t=$('tiles');if(!t)return;t.innerHTML=MODULES.map(function(m){var d='';try{d=m.desc()}catch(e){}
  return'<div class="tile'+(m.ready?'':' soon')+'" onclick="go(\''+m.k+'\')"><div class="ti">'+m.icon+'</div><b>'+esc(m.name)+'</b><div class="mut">'+esc(d)+'</div>'+(m.ready?'':'<div style="margin-top:6px"><span class="badge">Coming soon</span></div>')+'</div>'}).join('')}
-function route(){var h=((typeof window!=='undefined'&&window.location&&window.location.hash)||'').replace('#',''),inGov=(h=='government');
- $('home').classList.toggle('hide',inGov);$('gov').classList.toggle('hide',!inGov);if(!inGov)homeRefresh();try{window.scrollTo(0,0)}catch(e){}}
+function route(){var h=((typeof window!=='undefined'&&window.location&&window.location.hash)||'').replace('#',''),inGov=(h=='government'),inJ=(h=='justice');
+ $('home').classList.toggle('hide',inGov||inJ);$('gov').classList.toggle('hide',!inGov);$('justice').classList.toggle('hide',!inJ);if(!inGov&&!inJ)homeRefresh();if(inJ){jRender();jFormRender()}try{window.scrollTo(0,0)}catch(e){}}
 function go(k){var m=MODULES.find(function(x){return x.k==k});if(m&&!m.ready){note(m.soonMsg||m.name+' is coming soon.');return}
  try{if(k){window.location.hash='#'+k}else{history.pushState(null,'',window.location.pathname+window.location.search)}}catch(e){}
  route()}
