@@ -41,13 +41,23 @@ tr.brow{cursor:pointer}tr.brow:hover{background:var(--bg)}
 textarea{font:inherit;color:var(--tx);background:var(--card);border:1px solid var(--bd);border-radius:6px;padding:6px 8px;width:100%}
 .lane{padding:8px 0;border-top:1px solid var(--bd)}.seat{width:26px;height:26px;border:2px solid var(--bd);border-radius:6px;display:inline-block;margin:4px 4px 4px 0;transition:background .3s}
 .av{width:40px;height:40px;border-radius:50%;object-fit:cover;background:var(--bd);display:inline-flex;align-items:center;justify-content:center;flex:none;font-weight:600}
+.hm{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+.tile{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:22px 12px;text-align:center;cursor:pointer;transition:transform .1s,border-color .1s}
+.tile:hover{border-color:var(--ac);transform:translateY(-2px)}.tile .ti{font-size:46px;line-height:1.1;margin-bottom:6px}.tile b{font-size:17px;display:block;margin-bottom:2px}
+.tile.soon{border-style:dashed;opacity:.65}
 </style></head><body>
 <h1>Sims 4 Politics</h1>
 <div class="mut" style="margin:-6px 0 10px">A companion app that runs alongside The Sims 4</div>
 <div id="syncbar" class="row" style="margin:0 0 8px"></div>
 <div id="err" class="hide" style="background:var(--bad);color:#fff;padding:8px 10px;border-radius:6px;margin-bottom:8px"></div>
 <div id="md" class="mo hide"><div class="mb"><p id="mdMsg"></p><div class="row" style="margin:0"><button class="p" id="mdOk" onclick="mdYes()">Confirm</button><button id="mdNo" onclick="mdNo()">Cancel</button></div></div></div>
-<div class="row"><button onclick="exportData()">⬇ Export backup</button><button onclick="$('imp').click()">⬆ Import backup</button><input type="file" id="imp" accept=".json,application/json" class="hide" onchange="importData(this)"><span class="mut">Back up regularly — data is stored in this browser only.</span></div>
+<div class="row"><button onclick="exportData()">⬇ Export backup</button><button onclick="$('imp').click()">⬆ Import backup</button><input type="file" id="imp" accept=".json,application/json" class="hide" onchange="importData(this)"><span class="mut">Back up regularly. Data is saved in this browser, and on the server when you are connected.</span></div>
+<div id="home">
+ <h2 style="margin:0 0 4px">Home</h2><div class="mut" style="margin-bottom:10px">Choose where to go.</div>
+ <div id="tiles" class="hm"></div>
+</div>
+<div id="gov" class="hide">
+<div class="row" style="margin:0 0 8px;align-items:center"><button onclick="go('')">← Home</button><b>🏛️ Government</b></div>
 <div class="tabs"><button class="t on" id="t1" onclick="tab(1)">Parties &amp; Candidates</button><button class="t" id="t6" onclick="tab(6)">Role manager</button><button class="t" id="t2" onclick="tab(2)">Election</button><button class="t" id="t3" onclick="tab(3)">Government &amp; Opposition</button><button class="t" id="t4" onclick="tab(4)">Parliament</button><button class="t" id="t5" onclick="tab(5)">Pass the bill</button></div>
 
 <div id="v1">
@@ -103,11 +113,12 @@ textarea{font:inherit;color:var(--tx);background:var(--card);border:1px solid va
 <div class="row"><select id="bs" onchange="syncBp()"></select><select id="bp" title="Subject of the bill (the sponsor's role)"></select><button class="p" onclick="addBill()">Introduce in the House</button></div>
 <div id="bnote" class="mut" style="margin-top:4px"></div></div>
 <div id="bills"></div></div>
+</div>
 
 <script>
 var S={parties:[],cands:[],actions:[],history:[]},KEY='election-framework-v1',MAX=8;
 try{var l=localStorage.getItem(KEY);if(l)S=JSON.parse(l)}catch(e){}
-function save(){try{reconcile()}catch(e){}try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}try{queueSync()}catch(e){}render()}
+function save(){try{reconcile()}catch(e){}try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}try{queueSync()}catch(e){}try{homeRefresh()}catch(e){}render()}
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
 function $(i){return document.getElementById(i)}
 function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6)}
@@ -784,6 +795,19 @@ function commitElection(w,mayor){var d=new Date().toLocaleDateString();
  S.actions=[];R.cp.forEach(function(p){var f=fee(p.id);f.paid=false;f.date=today()});$('en').value='';save()}
 (function(){var ch=false,d=today();S.cands.forEach(function(c){if(c.status=='active'&&/^Opposition /i.test(c.primary||'')&&c.secondary&&!/^Opposition /i.test(c.secondary)&&rbase(c.primary)==rbase(c.secondary)&&c.base&&rbase(c.base)!=rbase(c.primary)){setRoles(c,c.primary,c.base,d);ch=true}});if(ch){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}})();
 
+
+/* ===== Home page ===== */
+var MODULES=[
+ {k:'government',icon:'🏛️',name:'Government',ready:true,desc:function(){var m=mayorC(),g=govId(),gp=g?party(g):null;return m?'Mayor: '+m.name+(gp?' · '+gp.name+' governs':''):(S.parties.length?S.parties.length+' part'+(S.parties.length==1?'y':'ies')+' set up':'Parties, elections, Parliament and bills')}},
+ {k:'justice',icon:'⚖️',name:'Law & Justice',ready:false,soonMsg:'Law & Justice is coming soon. This is where police will list crimes and keep a watch list.',desc:function(){return'Crimes, watch list and police'}}];
+function homeRefresh(){var t=$('tiles');if(!t)return;t.innerHTML=MODULES.map(function(m){var d='';try{d=m.desc()}catch(e){}
+ return'<div class="tile'+(m.ready?'':' soon')+'" onclick="go(\''+m.k+'\')"><div class="ti">'+m.icon+'</div><b>'+esc(m.name)+'</b><div class="mut">'+esc(d)+'</div>'+(m.ready?'':'<div style="margin-top:6px"><span class="badge">Coming soon</span></div>')+'</div>'}).join('')}
+function route(){var h=((typeof window!=='undefined'&&window.location&&window.location.hash)||'').replace('#',''),inGov=(h=='government');
+ $('home').classList.toggle('hide',inGov);$('gov').classList.toggle('hide',!inGov);if(!inGov)homeRefresh();try{window.scrollTo(0,0)}catch(e){}}
+function go(k){var m=MODULES.find(function(x){return x.k==k});if(m&&!m.ready){note(m.soonMsg||m.name+' is coming soon.');return}
+ try{if(k){window.location.hash='#'+k}else{history.pushState(null,'',window.location.pathname+window.location.search)}}catch(e){}
+ route()}
+/* ===== end home page ===== */
 /* ===== Server sync (Vercel) ===== */
 var SYNC={pw:'',on:false,etag:null,t:null,busy:false,again:false,dirty:false,state:'idle',msg:'',lastCheck:0};
 function hashStr(s){var h=5381;for(var i=0;i<s.length;i++)h=((h<<5)+h+s.charCodeAt(i))|0;return String(h)+':'+s.length}
@@ -799,7 +823,7 @@ function syncConnect(){var el=$('sppw'),pw=el?el.value.trim():'';if(!pw)return;S
 function syncOff(){SYNC.on=false;SYNC.pw='';SYNC.msg='';SYNC.state='idle';lsSet('sp-pw','');syncUi()}
 function adopt(srv,etag){S=Object.assign({parties:[],cands:[],actions:[],history:[],notices:[]},srv);try{reconcile()}catch(e){}
  lsSet(KEY,JSON.stringify(S));lsSet('sp-etag',etag||'');lsSet('sp-hash',hashStr(JSON.stringify(S)));
- SYNC.on=true;SYNC.etag=etag||null;SYNC.dirty=false;SYNC.state='ok';SYNC.msg='Loaded the latest data from the server at '+clockNow();render();syncUi()}
+ SYNC.on=true;SYNC.etag=etag||null;SYNC.dirty=false;SYNC.state='ok';SYNC.msg='Loaded the latest data from the server at '+clockNow();render();homeRefresh();syncUi()}
 function forceLoad(){syncApi('GET').then(function(r){if(r.json&&r.json.state)adopt(r.json.state,r.json.etag)})}
 function forceKeep(){syncApi('GET').then(function(r){if(r.json&&!r.json.error){SYNC.on=true;SYNC.etag=r.json.etag||null;SYNC.dirty=true;pushNow()}})}
 function syncConflict(msg,load,keep){ask(msg+' Press "Use server data" to load the server\'s version (this PC\'s changes will be replaced). Press Cancel to keep this PC\'s data and overwrite the server.','Use server data',load);MD_NO=keep}
@@ -832,5 +856,5 @@ function syncInit(){if(typeof window==='undefined')return;SYNC.pw=lsGet('sp-pw')
  window.addEventListener('beforeunload',function(e){if(SYNC.on&&SYNC.dirty){e.preventDefault();e.returnValue=''}})}
 /* ===== end server sync ===== */
 try{reconcile()}catch(e){}
-render();syncInit();fillVoices();if(speechOk())window.speechSynthesis.onvoiceschanged=fillVoices;
+render();syncInit();if(typeof window!=='undefined')window.addEventListener('hashchange',route);route();fillVoices();if(speechOk())window.speechSynthesis.onvoiceschanged=fillVoices;
 </script></body></html>
