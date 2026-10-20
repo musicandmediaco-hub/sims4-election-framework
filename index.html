@@ -133,7 +133,7 @@ textarea{font:inherit;color:var(--tx);background:var(--card);border:1px solid va
 <div id="justice" class="hide jx">
 <div class="row" style="margin:0 0 8px;align-items:center"><button onclick="go('')">← Home</button><b>⚖️ Law &amp; Justice</b></div>
 <div id="jsum" style="margin-bottom:8px"></div>
-<div class="tabs"><button class="t on" id="jt1" onclick="jtab(1)">Police &amp; Judges</button><button class="t" id="jt2" onclick="jtab(2)">Crime cases</button><button class="t" id="jt3" onclick="jtab(3)">Court docket</button></div>
+<div class="tabs"><button class="t on" id="jt1" onclick="jtab(1)">Police &amp; Judges</button><button class="t" id="jt2" onclick="jtab(2)">Crime cases</button><button class="t" id="jt3" onclick="jtab(3)">Court docket</button><button class="t" id="jt4" onclick="jtab(4)">Closed cases</button></div>
 <div id="jv1">
  <div class="card"><h2>Register a person</h2>
   <div class="mut" style="margin-bottom:6px">Officers added here can be picked on crime cases and search warrants. Judges can be picked as the authorising judge, and later to hear a trial.</div>
@@ -147,7 +147,8 @@ textarea{font:inherit;color:var(--tx);background:var(--card);border:1px solid va
  <div class="card"><div id="jlist"></div></div>
 </div>
 <div id="jv2" class="hide"><div id="jcases"></div></div>
-<div id="jv3" class="hide"><div class="card"><h2>Court docket</h2><div class="mut" style="margin-bottom:6px">Cases the SCPD has submitted to trial. Open one to assign a judge and trial date, record pleas, hold the hearing, deliver the verdict and pass sentence.</div><div id="jdocket"></div></div></div>
+<div id="jv3" class="hide"><div class="card"><h2>Court docket</h2><div class="mut" style="margin-bottom:6px">Cases the SCPD has submitted to trial. Open one to assign a judge and trial date, record pleas, hold the hearing, deliver the verdict and pass sentence.</div><div id="jdocket"></div></div>
+<div id="jv4" class="hide"><div class="card"><h2>Closed cases</h2><div class="mut" style="margin-bottom:6px">Every case the court has closed, kept here for reference. Search by name, offence, location, law, judge or outcome. The Similar cases panel on a new case checks against these automatically.</div><div id="jclosed"></div></div></div></div>
 </div>
 <div id="lb" class="mo hide" onclick="lbClose()"><div style="text-align:center"><img id="lbi" alt="" style="max-width:100%;max-height:82vh;border-radius:8px"><div id="lbc" style="color:#fff;margin-top:8px"></div><div style="color:#ddd;font-size:12px">Tap anywhere to close</div></div></div>
 
@@ -903,8 +904,67 @@ function jLawPanel(b,d){if(!b)return'';var r=lawTextAt(b,d),p=penaltyAt(b,d);
 function jLawPanels(c,only){var ids=[],seen={};(only?[only]:c.laws.concat(jCharges(c).map(function(x){return x.ch.lawId}))).forEach(function(i){if(i&&!seen[i]){seen[i]=1;ids.push(i)}});return ids.map(function(i){return jLawPanel(bill(i),c.offDate)}).join('')}
 
 /* ---- tabs and rendering ---- */
-function jtab(n){JT=n;[1,2,3].forEach(function(i){$('jv'+i).classList.toggle('hide',i!=n);$('jt'+i).classList.toggle('on',i==n)});JFORCE=true;justiceRender()}
-function jCounts(){var d=jd(),o=d.police.filter(function(p){return p.kind=='officer'&&jact(p)}).length,j=d.police.filter(function(p){return p.kind=='judge'&&jact(p)}).length,op=d.cases.filter(function(c){return c.status!='Submitted'}).length,aw=d.court.filter(function(t){return jstage(t)!='closed'}).length;return{o:o,j:j,op:op,aw:aw}}
+/* ----- Closed cases + similar-case scan ----- */
+var JCQ='',JCQO='',JCQL='',JCQS='new';
+var JSTOP={};'the and for with from that this these those they them their there then than have has had were was are not but into out over under after before while during about against between through just also very more most some any all one two three four five six seven eight nine ten sim sims case house lot home'.split(' ').forEach(function(w){JSTOP[w]=1});
+function jNorm(s){return String(s||'').toLowerCase().replace(/[^a-z0-9\s]/g,' ').replace(/\s+/g,' ').trim()}
+function jToks(s){var o={};jNorm(s).split(' ').forEach(function(w){if(w.length>3&&!JSTOP[w]&&!/^\d+$/.test(w)){var k=w.length>5?w.replace(/(ing|ed|es|s)$/,''):w;o[k]=w}});return o}
+function jPerson(n){return jNorm(n).split(' ').filter(function(w){return w&&!/^(mr|mrs|ms|miss|dr|sim)$/.test(w)})}
+function jSame(a,b){var x=jPerson(a),y=jPerson(b);if(!x.length||!y.length)return false;if(x.join(' ')==y.join(' '))return true;var sh=x.length<=y.length?x:y,lo=x.length<=y.length?y:x;return sh.length>=2&&sh.every(function(w){return lo.indexOf(w)>=0})}
+function jLawIds(c){var o={};(c.laws||[]).forEach(function(i){o[i]=1});(c.suspects||[]).forEach(function(s){(s.charges||[]).forEach(function(ch){if(ch.lawId)o[ch.lawId]=1})});return Object.keys(o)}
+function jGuilty(t,ch){var r=t&&t.rec&&t.rec[ch.id];return !!(r&&(r.plea=='Guilty'||r.verdict=='Guilty'))}
+function jVerdict(o,s){var t=o.courtId&&jcourt(o.courtId);if(!(s.charges||[]).length)return s.status=='Cleared'?'cleared':'';
+ if(s.charges.some(function(ch){return jGuilty(t,ch)}))return 'found guilty';
+ if(t&&jstage(t)=='closed')return 'found not guilty';if(t)return 'charged, case in court';return s.status=='Charged'?'charged':''}
+function jPriors(c){var out=[];(c.suspects||[]).forEach(function(a){jd().cases.forEach(function(o){if(o.id==c.id)return;var t=o.courtId&&jcourt(o.courtId);if(!t||jstage(t)!='closed')return;
+ (o.suspects||[]).forEach(function(b){if(!jSame(a.name,b.name))return;(b.charges||[]).forEach(function(ch){if(!jGuilty(t,ch))return;var r=t.rec[ch.id],bl=ch.lawId&&bill(ch.lawId);
+  out.push({who:a.name,c:o,t:t,charge:ch.text||(bl?bl.title:'charge'),date:t.closed||'',pen:penTxt(r.fine,r.sentence)||(r.none?'No penalty imposed':'')})})})})});return out}
+function jSimilar(c){var out=[],ks=jToks([c.offence,c.desc].join(' ')),la=jLawIds(c);
+ jd().cases.forEach(function(o){if(o.id==c.id)return;var sc=0,rs=[];
+  (c.suspects||[]).forEach(function(a){(o.suspects||[]).forEach(function(b){if(jSame(a.name,b.name)){var v=jVerdict(o,b);sc+=6;rs.push('Same suspect: '+b.name+(v?' ('+v+')':''))}})});
+  if(c.reportedBy&&o.reportedBy&&jSame(c.reportedBy,o.reportedBy)){sc+=3;rs.push('Same person reported both: '+o.reportedBy)}
+  var wn=0;(c.witnesses||[]).forEach(function(a){(o.witnesses||[]).forEach(function(b){if(wn<2&&jSame(a.name,b.name)){wn++;sc+=2;rs.push('Same witness: '+b.name)}})});
+  var lo=jLawIds(o),sl=la.filter(function(i){return lo.indexOf(i)>=0});if(sl.length){sc+=2;rs.push('Same law: '+sl.map(function(i){return(bill(i)||{}).no||''}).join(', '))}
+  var l1=jNorm(c.location),l2=jNorm(o.location);
+  if(l1&&l2){if(l1==l2||(l1.length>=4&&l2.length>=4&&(l1.indexOf(l2)>=0||l2.indexOf(l1)>=0))){sc+=3;rs.push('Same location: '+o.location)}else{var t1=jToks(c.location),t2=jToks(o.location);if(Object.keys(t1).filter(function(k){return t2[k]}).length>=2){sc+=2;rs.push('Similar location wording')}}}
+  var o1=jNorm(c.offence),o2=jNorm(o.offence);if(o1&&o2&&o1==o2){sc+=3;rs.push('Same offence: '+o.offence)}
+  var kb=jToks([o.offence,o.desc].join(' ')),sh=Object.keys(ks).filter(function(k){return kb[k]});
+  if(sh.length>=2){sc+=Math.min(4,sh.length*0.75);rs.push('Shared wording: '+sh.slice(0,6).map(function(k){return ks[k]}).join(', '))}
+  if(sc>0&&ISO.test(c.offDate||'')&&ISO.test(o.offDate||'')){var dd=Math.round(Math.abs((Date.parse(c.offDate)-Date.parse(o.offDate))/864e5));if(dd<=7){sc+=1;rs.push('Within '+dd+' day'+(dd==1?'':'s')+' of each other')}}
+  if(sc>=4)out.push({c:o,t:o.courtId&&jcourt(o.courtId),score:sc,reasons:rs,level:sc>=9?'Strong':sc>=6?'Likely':'Possible'})});
+ return out.sort(function(a,b){return b.score-a.score})}
+function jRescan(){JFORCE=true;justiceRender()}
+function jSimHtml(c,fold){var pr=jPriors(c),sm=jSimilar(c),h='';
+ h+=pr.length?'<div class="sec"><b class="b">Previous convictions of people on this case</b>'+pr.map(function(p){return'<div style="margin:3px 0">'+esc(p.who)+' was found guilty in <b>'+esc(p.c.no)+'</b>'+(p.date?' ('+esc(p.date)+')':'')+': '+esc(p.charge)+(p.pen?' · '+esc(p.pen):'')+' <button onclick="'+oc('jViewCase',p.c.id)+'">View</button></div>'}).join('')+'<div class="mut">Check the law for repeat-offence penalties.</div></div>':'<div class="mut">No previous convictions found for the people named on this case.</div>';
+ h+=sm.length?'<div class="sec"><b>Similar cases ('+sm.length+')</b>'+sm.slice(0,6).map(function(m){return'<div style="margin:6px 0"><span class="badge '+(m.level=='Strong'?'b strong':m.level=='Likely'?'g':'mut')+'">'+m.level+'</span> <b>'+esc(m.c.no)+'</b> '+esc(m.c.offence||'(no offence entered)')+' <small class="mut">'+(m.t?'· '+esc(jstageLabel(m.t))+(m.t.outcome?' · '+esc(m.t.outcome):''):'· open investigation')+'</small><div class="mut">'+m.reasons.map(esc).join(' · ')+'</div><button onclick="'+oc('jViewCase',m.c.id)+'">View case file</button></div>'}).join('')+(sm.length>6?'<div class="mut">Showing the 6 closest of '+sm.length+'.</div>':'')+'</div>':'<div class="mut" style="margin-top:4px">No similar cases found yet. Add suspects, a location and a description, then rescan.</div>';
+ var tt='🔎 Similar cases ('+sm.length+') and previous convictions ('+pr.length+')',note='<div class="mut" style="margin:4px 0 6px">Scanned automatically against every other case, open and closed: suspects, who reported it, witnesses, laws, location and wording. <button onclick="jRescan()">Rescan now</button></div>';
+ var bd=(pr.length?'var(--bad)':'var(--ac)');
+ return fold?'<details class="card" style="border-left:6px solid '+bd+';margin:0 0 10px"'+(pr.length?' open':'')+'><summary style="cursor:pointer"><b>'+tt+'</b></summary>'+note+h+'</details>':'<div class="card" style="border-left:6px solid '+bd+'"><h2 style="margin:0">'+tt+'</h2>'+note+h+'</div>'}
+function jClosedList(){return jd().court.filter(function(t){return jstage(t)=='closed'&&jcase(t.caseId)})}
+function jBlob(c,t){var P=[c.no,t.no,c.offence,c.location,c.desc,c.reportedBy,c.offDate,c.reported,t.outcome,t.closed,t.judgeId?jwho(t.judgeId):'',t.room];
+ c.suspects.forEach(function(s){P.push(s.name,s.why,s.notes);(s.charges||[]).forEach(function(ch){P.push(ch.text);var b=ch.lawId&&bill(ch.lawId);if(b)P.push(b.no,b.title);var r=t.rec&&t.rec[ch.id];if(r)P.push(r.plea,r.verdict,r.fine,r.sentence,r.remarks,r.restitution)})});
+ c.witnesses.forEach(function(w){P.push(w.name,w.text)});c.exhibits.forEach(function(e){P.push(e.ref,e.desc,e.foundAt)});
+ jLawIds(c).forEach(function(i){var b=bill(i);if(b)P.push(b.no,b.title)});c.officers.forEach(function(i){var q=jperson(i);if(q)P.push(q.name)});return jNorm(P.join(' '))}
+function jOutKind(t){var o=t.outcome||'';return /^Not guilty/.test(o)?'ng':/^Guilty on \d+ of/.test(o)?'mix':/^Guilty/.test(o)?'g':''}
+function jClosedRows(){var all=jClosedList(),terms=jNorm(JCQ).split(' ').filter(Boolean),L=JCQL;
+ var rows=all.filter(function(t){var c=jcase(t.caseId);if(JCQO&&jOutKind(t)!=JCQO)return false;if(L&&jLawIds(c).indexOf(L)<0)return false;if(!terms.length)return true;var bl=jBlob(c,t);return terms.every(function(w){return bl.indexOf(w)>=0})});
+ rows.sort(function(a,b){var x=(a.closed||'')<(b.closed||'')?-1:(a.closed||'')>(b.closed||'')?1:0;return JCQS=='old'?x:-x});
+ var h='<div class="mut" style="margin:6px 0">Showing '+rows.length+' of '+all.length+' closed case'+(all.length==1?'':'s')+'.</div>';
+ if(!rows.length)return h+'<span class="mut">No closed cases match.</span>';
+ return h+'<div class="tw"><table><tr><th>Case</th><th>Offence / location</th><th>Closed</th><th>Accused and outcome</th><th>Judge</th><th>Law</th><th></th></tr>'+rows.map(function(t){var c=jcase(t.caseId),acc=c.suspects.filter(function(s){return s.status=='Charged'}),ls=jLawIds(c).map(function(i){return(bill(i)||{}).no||''}).filter(Boolean);
+  return'<tr class="brow" onclick="'+oc('jCourtOpen',t.id)+'"><td><b>'+esc(c.no)+'</b><br><small class="mut">'+esc(t.no)+'</small></td><td>'+esc(c.offence||'(no offence entered)')+'<br><small class="mut">'+esc(c.location||'')+'</small></td><td>'+esc(t.closed||'—')+'<br><small class="mut">offence '+esc(c.offDate||'not recorded')+'</small></td><td>'+(acc.length?acc.map(function(s){return esc(s.name)+': <b>'+esc((jVerdict(c,s)||'').replace('found ',''))+'</b>'}).join('<br>'):'<span class="mut">none charged</span>')+'<br><small class="mut">'+esc(t.outcome||'')+'</small></td><td>'+(t.judgeId?esc(jwho(t.judgeId)):'<span class="mut">—</span>')+'</td><td>'+(ls.length?esc(ls.join(', ')):'<span class="mut">—</span>')+'</td><td><button onclick="event.stopPropagation();'+oc('jViewCase',c.id)+'">Case file</button></td></tr>'}).join('')+'</table></div>'}
+function jClosedView(){var all=jClosedList();
+ if(!all.length)return'<span class="mut">No closed cases yet. A case appears here once the court closes it after sentencing or an acquittal.</span>';
+ var laws={};all.forEach(function(t){jLawIds(jcase(t.caseId)).forEach(function(i){var b=bill(i);if(b)laws[i]=b.no+': '+b.title})});
+ return'<div class="row"><input id="jcq" style="max-width:340px" placeholder="Search: name, offence, location, law, judge, outcome…" value="'+esc(JCQ)+'" oninput="jCQ(this.value)">'
+  +'<select id="jcqo" onchange="jCQF()"><option value="">Any outcome</option><option value="g"'+(JCQO=='g'?' selected':'')+'>Guilty on all</option><option value="mix"'+(JCQO=='mix'?' selected':'')+'>Guilty on some</option><option value="ng"'+(JCQO=='ng'?' selected':'')+'>Not guilty</option></select>'
+  +'<select id="jcql" onchange="jCQF()"><option value="">Any law</option>'+Object.keys(laws).map(function(i){return'<option value="'+esc(i)+'"'+(JCQL==i?' selected':'')+'>'+esc(laws[i])+'</option>'}).join('')+'</select>'
+  +'<select id="jcqs" onchange="jCQF()"><option value="new">Newest first</option><option value="old"'+(JCQS=='old'?' selected':'')+'>Oldest first</option></select></div><div id="jcres">'+jClosedRows()+'</div>'}
+function jCQ(v){JCQ=v;var r=$('jcres');if(r)r.innerHTML=jClosedRows()}
+function jCQF(){JCQO=$('jcqo').value;JCQL=$('jcql').value;JCQS=$('jcqs').value;var r=$('jcres');if(r)r.innerHTML=jClosedRows()}
+/* ----- end closed cases + similar-case scan ----- */
+function jtab(n){JT=n;[1,2,3,4].forEach(function(i){$('jv'+i).classList.toggle('hide',i!=n);$('jt'+i).classList.toggle('on',i==n)});JFORCE=true;justiceRender()}
+function jCounts(){var d=jd(),o=d.police.filter(function(p){return p.kind=='officer'&&jact(p)}).length,j=d.police.filter(function(p){return p.kind=='judge'&&jact(p)}).length,op=d.cases.filter(function(c){return c.status!='Submitted'}).length,aw=d.court.filter(function(t){return jstage(t)!='closed'}).length,cl=d.court.filter(function(t){return jstage(t)=='closed'&&jcase(t.caseId)}).length;return{o:o,j:j,op:op,aw:aw,cl:cl}}
 function jstage(t){return t.stage||'awaiting'}
 function jstageLabel(t){var s=STAGES.find(function(x){return x[0]==jstage(t)});return s?s[1]:'Awaiting trial'}
 function jsetStage(t,st){t.stage=st;t.status=(STAGES.find(function(x){return x[0]==st})||[0,st])[1]}
@@ -916,8 +976,8 @@ function justiceRender(){var root=$('justice');if(!root||root.classList.contains
  var sts={};jppl('officer').forEach(function(p){if(p.station)sts[p.station]=1});$('dl_stations').innerHTML=Object.keys(sts).sort().map(function(r){return'<option>'+esc(r)+'</option>'}).join('');
  var n=jCounts();
  $('jsum').innerHTML='<span class="badge strong">SCPD officers: '+n.o+'</span> <span class="badge strong">Judges: '+n.j+'</span> <span class="badge strong">Open cases: '+n.op+'</span> <span class="badge strong">In court: '+n.aw+'</span><br>'+sizeNote();
- $('jt2').textContent='Crime cases ('+n.op+' open)';$('jt3').textContent='Court docket ('+n.aw+' active)';
- if(JT==1)$('jlist').innerHTML=jListView();else if(JT==2)$('jcases').innerHTML=jCasesView();else $('jdocket').innerHTML=jDocketView()}
+ $('jt2').textContent='Crime cases ('+n.op+' open)';$('jt3').textContent='Court docket ('+n.aw+' active)';$('jt4').textContent='Closed cases ('+n.cl+')';
+ if(JT==1)$('jlist').innerHTML=jListView();else if(JT==2)$('jcases').innerHTML=jCasesView();else if(JT==3)$('jdocket').innerHTML=jDocketView();else $('jclosed').innerHTML=jClosedView()}
 
 /* ---- register: police officers and judges ---- */
 function jKind(k){JK=k;$('pk_officer').classList.toggle('on',k=='officer');$('pk_judge').classList.toggle('on',k=='judge');
@@ -1003,6 +1063,7 @@ function jFl(l,inner,req,w){return'<label class="fl" style="flex:1 1 '+(w||200)+
 function jEditor(c){var ro=c.status=='Submitted',id=c.id,ct=c.courtId&&jcourt(c.courtId),fl=jFl;
  var h='<div class="row" style="justify-content:space-between;margin:0 0 8px"><div class="row" style="margin:0"><button onclick="jBack()">← All cases</button><b style="font-size:17px">'+esc(c.no)+'</b><span class="badge '+(ro?'g strong':'mut strong')+'">'+(ro?(ct&&jstage(ct)=='closed'?'Concluded':'Submitted to trial'):'Open investigation')+'</span></div>'+(ro?'':'<button class="d" onclick="'+oc('jDelCase',id)+'">Delete case</button>')+'</div>';
  if(ro)h+='<div class="card" style="border-left:6px solid var(--ac)">Submitted to the court on '+esc(c.submitted)+(ct?' as <b>'+esc(ct.no)+'</b> ('+esc(jstageLabel(ct))+')':'')+'. The case file is locked. <div class="row" style="margin:6px 0 0">'+(ct?'<button class="p" onclick="'+oc('jCourtOpen',ct.id)+'">Open in the court docket</button>':'')+(ct&&jstage(ct)=='awaiting'?'<button onclick="'+oc('jRecall',ct.id)+'">Recall from court</button>':'')+(ct&&jstage(ct)=='closed'?'<button class="d" onclick="'+oc('jRemoveCase',ct.id)+'">Remove this old case</button>':'')+'</div></div>';
+ h+=jSimHtml(c);
  h+='<fieldset'+(ro?' disabled':'')+'>';
  var offs=jppl('officer').filter(function(p){return jact(p)||c.officers.indexOf(p.id)>=0}).sort(jsortP);
  h+='<div class="card"><h2>1. Attending officers</h2><div class="mut" style="margin-bottom:6px">Tick every officer who attended the scene. Officers come from the Police &amp; Judges register.</div>'+
@@ -1142,6 +1203,7 @@ function jReady(c){var req=[],warn=[],ok=[],ints=c.suspects.filter(function(s){r
  else{var nochg=charged.filter(function(s){return !s.charges.length||s.charges.some(function(ch){return !(ch.text||'').trim()&&!ch.lawId})});if(nochg.length)req.push('A charge with wording or a law for '+nochg.map(function(s){return s.name}).join(', '));else ok.push(charged.length+' charged, '+charged.reduce(function(n,s){return n+s.charges.length},0)+' charge'+(charged.reduce(function(n,s){return n+s.charges.length},0)==1?'':'s')+' recorded')}
  if(!c.photos.length&&!c.exhibits.length)warn.push('no photographic evidence or logged evidence is attached');
  if(!c.witnesses.length)warn.push('no witness statements are recorded');
+ var simM=jSimilar(c),priM=jPriors(c);if(priM.length)warn.push('previous convictions found for '+priM.map(function(p){return p.who}).filter(function(v,i,a){return a.indexOf(v)==i}).join(', ')+' (see the Similar cases panel)');if(simM.length)warn.push(simM.length+' similar case'+(simM.length==1?'':'s')+' found, closest '+simM[0].c.no+' (see the Similar cases panel)');
  c.exhibits.forEach(function(e){if(!e.storedAt.trim())warn.push(e.ref+' has no storage location recorded')});
  if(!c.offence.trim()&&!c.laws.length)warn.push('no offence or law is entered');
  if(c.suspects.length&&ints<c.suspects.length)warn.push((c.suspects.length-ints)+' of '+c.suspects.length+' suspect'+(c.suspects.length==1?' has':'s have')+' not been interviewed');
@@ -1188,6 +1250,7 @@ function jCourtView(t){var c=jcase(t.caseId);if(!c)return'<span class="b">The ca
   '<div>Police: '+c.officers.map(function(i){return esc(joffTxt(i))+(c.lead==i?' (in charge)':'')}).join(', ')+'</div>'+
   '<div class="mut">Evidence: '+c.exhibits.length+' logged item'+(c.exhibits.length==1?'':'s')+' · '+c.photos.length+' photo'+(c.photos.length==1?'':'s')+' · '+c.witnesses.length+' witness statement'+(c.witnesses.length==1?'':'s')+' · '+c.warrants.length+' warrant'+(c.warrants.length==1?'':'s')+'</div>'+
   '<div class="sec"><b>The law</b>'+(jLawPanels(c)||'<div class="mut">No law selected on this case.</div>')+'</div><div class="sec"><b>Accused and charges</b>'+c.suspects.filter(function(s){return s.status=='Charged'}).map(function(s){return'<div style="margin-top:6px"><b>'+esc(s.name)+'</b> <span class="badge '+(s.bail.status=='Bail granted'?'g':s.bail.status=='Not decided'?'mut':'b')+'">'+esc(s.bail.status)+'</span>'+(s.bail.status=='Bail granted'&&(s.bail.amount||s.bail.conditions)?' <small class="mut">'+esc([s.bail.amount,s.bail.conditions].filter(Boolean).join(' · '))+'</small>':'')+s.charges.map(function(ch,i){var b=ch.lawId&&bill(ch.lawId);return'<div style="margin-left:12px"><small>'+(i+1)+'. '+esc(ch.text||(b?b.title:''))+(b?' <span class="mut">('+esc(b.no)+')</span>':'')+'</small><br>'+jPenLine(c,ch).replace(/<small/g,'<small style="margin-left:14px"')+'</div>'}).join('')+'</div>'}).join('')+'</div></div>';
+ h+=jSimHtml(c,true);
  // stage panels
  var P='';
  if(st=='awaiting'||st=='scheduled'){
