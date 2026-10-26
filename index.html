@@ -157,11 +157,12 @@ textarea{font:inherit;color:var(--tx);background:var(--card);border:1px solid va
 
 <div id="directory" class="hide jx">
 <div class="row" style="margin:0 0 8px;align-items:center"><button onclick="go('')">← Home</button><b>📒 Directory</b></div>
-<div class="tabs"><button class="t on" id="drt1" onclick="dirTab(1)">Businesses</button><button class="t" id="drt2" onclick="dirTab(2)">Sims</button><button class="t" id="drt3" onclick="dirTab(3)">Worlds &amp; types</button></div>
+<div class="tabs"><button class="t on" id="drt1" onclick="dirTab(1)">Businesses</button><button class="t" id="drt2" onclick="dirTab(2)">Sims</button><button class="t" id="drt3" onclick="dirTab(3)">Worlds &amp; types</button><button class="t" id="drt4" onclick="dirTab(4)">Families</button></div>
 <datalist id="dl_owners"></datalist>
 <div id="drv1"><div id="drbiz"></div></div>
 <div id="drv2" class="hide"><div id="drsim"></div></div>
 <div id="drv3" class="hide"><div id="drlists"></div></div>
+<div id="drv4" class="hide"><div id="drfam"></div></div>
 </div>
 
 <script>
@@ -1439,7 +1440,7 @@ function go(k){var m=MODULES.find(function(x){return x.k==k});if(m&&!m.ready){no
 var DIRTYPES=['Restaurant','Café / Bar','Retail shop','Grocery / Market','Salon / Spa','Gym / Fitness','Bookstore','Art gallery','Clinic','Nightclub / Venue','Office / Services','Hotel / Lodging'];
 var RKINDS=['Conviction','Fine / penalty notice','Caution / warning','Other minor offence'];
 var DIRT=1,DIRFORCE=false,DRBQ='',DRBW='',DRBT='',DRSQ='',DRSW='',DRSR='',DREDIT='',DRREC='',DRREN='';
-function dirData(){if(!S.dir)S.dir={worlds:[],types:DIRTYPES.slice(),businesses:[],sims:[]};var d=S.dir;d.worlds=d.worlds||[];d.types=d.types||[];d.businesses=d.businesses||[];d.sims=d.sims||[];d.sims.forEach(function(x){x.records=x.records||[]});return d}
+function dirData(){if(!S.dir)S.dir={worlds:[],types:DIRTYPES.slice(),businesses:[],sims:[]};var d=S.dir;d.worlds=d.worlds||[];d.types=d.types||[];d.businesses=d.businesses||[];d.sims=d.sims||[];d.families=d.families||[];d.families.forEach(function(f){f.members=f.members||[]});d.sims.forEach(function(x){x.records=x.records||[]});return d}
 /* keeps the sim register in step with Government members and court convictions */
 function dirAuto(){var d=dirData(),ch=false,skip=function(n){return(d.noAuto||[]).some(function(x){return jSame(x,n)})};
  (S.cands||[]).forEach(function(c){var role=c.status=='active'?(c.mayor?'Mayor':isSeated(c)?c.seat+' member':''):'',pt=c.partyId&&party(c.partyId),
@@ -1483,18 +1484,69 @@ function dirDeathSave(id){var d=dirData(),s=d.sims.find(function(x){return x.id=
  if(q&&jact(q)){if(q.kind=='judge'&&jd().court.some(function(t){return t.judgeId==q.id&&jstage(t)!='closed'}))msg=s.name+' presides over a trial that is still active. Assign another judge, then set them to Retired on the Police & Judges tab.';else q.status='retired'}
  s.death={date:dt,cause:c,detail:c=='Other'?x:'',src:s.death&&s.death.src||''};delete s.deathOff;DRDEATH='';dirSave();if(msg)alert(msg)}
 function dirDeathDel(id){var d=dirData(),s=d.sims.find(function(x){return x.id==id});if(!s)return;ask('Remove the death record for '+s.name+'?','Remove',function(){delete s.death;s.deathOff=true;dirSave()})}
+
+
+/* ----- families ----- */
+var DFQ='',DFIMP=false,DFEDIT='',FAMROLES=['Head of family','Parent','Mother','Father','Spouse','Partner','Child','Sibling','Grandparent','Guardian','Other relative'];
+function dirRefresh(){DIRFORCE=true;dirRender()}
+function dFam(id){return dirData().families.find(function(f){return f.id==id})}
+function famTag(sid){return dirData().families.filter(function(f){return f.members.some(function(m){return m.sid==sid})}).map(function(f){return' <span class="badge">👪 '+esc(f.name)+'</span>'}).join('')}
+function dirSimInfo(x){var d=dirData(),st=dirStatus(x),a=['• '+x.name+' · '+(x.world||'no world recorded')],b=[];
+ if(x.death)b.push('Deceased '+(x.death.date||'')+(x.death.cause?' ('+(x.death.cause=='Other'?x.death.detail:x.death.cause)+')':''));if(st.conv)b.push('Convicted');if(st.pend)b.push('Before the court');if(st.minor)b.push('Minor offence');if(!st.conv&&!st.pend&&!st.minor)b.push('Clear record');a.push('   Status: '+b.join(', '));
+ var r=[x.gov,x.law].filter(Boolean);if(r.length)a.push('   Role: '+r.join('; '));
+ var fm=d.families.filter(function(f){return f.members.some(function(m){return m.sid==x.id})}).map(function(f){return f.name});if(fm.length)a.push('   Family: '+fm.join(', '));
+ if(x.notes)a.push('   Notes: '+x.notes.slice(0,120));if(x.added)a.push('   Added to the registry: '+x.added);return a.join('\n')}
+function dirAskSame(nm,w,C,ctx,onNew,onSame){var msg='A sim called "'+nm+'" is already in the registry'+(C.length>1?' ('+C.length+' matches)':'')+'.\n\n'+C.slice(0,3).map(dirSimInfo).join('\n\n')+(C.length>3?'\n…and '+(C.length-3)+' more':'')+'\n\nYou are adding "'+nm+'"'+(w?' from '+w:' (no world given)')+(ctx?' '+ctx:'')+'.\nIs this a different sim?'+(ctx?'\n"Same sim" links the existing sim instead of creating a new one.':'');
+ askYN(msg,onNew,'Add as a new sim','Same sim, do not add');MD_NO=onSame}
+function famAdd(f,text,done){var d=dirData(),r={nw:0,ln:0,dp:0},Q=[];
+ String(text||'').split('\n').forEach(function(line){line=line.trim();if(!line)return;var p=line.split(/\t|,/),nm=p[0].replace(/\s+/g,' ').trim();if(nm)Q.push({nm:nm,role:(p[1]||'').trim()})});
+ var link=function(sm,role){var m=f.members.find(function(x){return x.sid==sm.id});if(m){if(!m.role&&role)m.role=role;r.dp++;return false}f.members.push({sid:sm.id,role:role});return true},
+ mk=function(it){var sm={id:uid(),name:it.nm,world:f.world||'',notes:'Added with the '+f.name+' family',records:[],added:today()};d.sims.push(sm);link(sm,it.role);r.nw++};
+ (function nxt(){var it=Q.shift();if(!it){done(r);return}
+  var C=d.sims.filter(function(x){return jSame(x.name,it.nm)}),
+  mem=C.find(function(x){return f.members.some(function(m){return m.sid==x.id})&&(!x.world||!f.world||x.world==f.world)}),
+  sure=C.find(function(x){return x.world&&f.world&&x.world==f.world&&jNorm(x.name)==jNorm(it.nm)});
+  if(mem){link(mem,it.role);return nxt()}
+  if(sure){if(link(sure,it.role))r.ln++;return nxt()}
+  if(!C.length){mk(it);return nxt()}
+  dirAskSame(it.nm,f.world,C,'to the '+f.name+' family',function(){mk(it);nxt()},function(){var pk=C.find(function(x){return x.world==f.world})||C[0];if(link(pk,it.role))r.ln++;nxt()})})()}
+function famMsg(r){var a=[];if(r.nw)a.push(r.nw+' new sim'+(r.nw==1?'':'s')+' added to the registry');if(r.ln)a.push(r.ln+' sim'+(r.ln==1?'':'s')+' already in the registry linked');if(r.dp)a.push(r.dp+' skipped as already in this family');return a.length?a.join(', ')+'.':'No members were added.'}
+function famCreate(){var d=dirData(),n=$('fm_n').value.trim(),w=$('fm_w').value;if(!n){alert('Give the family a name.');return}
+ if(d.families.some(function(f){return jNorm(f.name)==jNorm(n)&&(f.world||'')==w})){alert('There is already a family called '+n+(w?' in '+w:'')+'.');return}
+ var f={id:uid(),name:n,world:w,notes:$('fm_x').value.trim(),important:$('fm_i').checked,members:[],added:today()};d.families.push(f);famAdd(f,$('fm_b').value,function(r){dirSave();alert('Family created. '+famMsg(r))})}
+function famMore(id){var f=dFam(id),t=$('dfa_'+id).value;if(!f||!t.trim()){alert('Type or paste at least one name first.');return}famAdd(f,t,function(r){dirSave();alert(famMsg(r))})}
+function famStar(id){var f=dFam(id);f.important=!f.important;dirSave()}
+function famRole(id,sid,v){var m=dFam(id).members.find(function(x){return x.sid==sid});if(m){m.role=v;jquiet()}}
+function famDrop(id,sid){var f=dFam(id);f.members=f.members.filter(function(m){return m.sid!=sid});dirSave()}
+function famEdit(id){DFEDIT=id;dirRefresh()}
+function famSaveE(id){var f=dFam(id),n=$('fe_n').value.trim();if(!n){alert('A family needs a name.');return}f.name=n;f.world=$('fe_w').value;f.notes=$('fe_x').value.trim();DFEDIT='';dirSave()}
+function famDel(id){var f=dFam(id);ask('Delete the '+f.name+' family? The sims in it stay in the registry.','Delete',function(){var d=dirData();d.families=d.families.filter(function(x){return x.id!=id});dirSave()})}
+function dfSq(v){DFQ=v;var r=$('dfres');if(r)r.innerHTML=dirFamRows()}
+function dfImp(c){DFIMP=c;dirRefresh()}
+function dirFamRows(){var d=dirData(),q=jNorm(DFQ),L=d.families.filter(function(f){if(DFIMP&&!f.important)return false;if(!q)return true;return jNorm([f.name,f.world,f.notes].concat(f.members.map(function(m){var x=d.sims.find(function(s){return s.id==m.sid});return(x?x.name:'')+' '+m.role})).join(' ')).indexOf(q)>=0}).sort(function(a,b){return(b.important?1:0)-(a.important?1:0)||(a.name<b.name?-1:1)});
+ if(!L.length)return'<span class="mut">'+(d.families.length?'No family matches.':'No families yet. Create one above and paste in its members.')+'</span>';
+ return L.map(function(f){var ms=f.members.map(function(m){return{m:m,s:d.sims.find(function(x){return x.id==m.sid})}}).filter(function(x){return x.s}),cv=0,dead=0;ms.forEach(function(x){if(dirStatus(x.s).conv)cv++;if(x.s.death)dead++});
+  var h='<div class="card" style="margin:8px 0 0"><div class="row" style="margin:0;justify-content:space-between"><div class="row" style="margin:0"><button onclick="famStar(\''+f.id+'\')" title="Mark as important" style="border:0;background:none;font-size:20px;flex:none">'+(f.important?'⭐':'☆')+'</button><b>'+esc(f.name)+'</b>'+(f.world?'<span class="mut">'+esc(f.world)+'</span>':'')+'<span class="badge">'+ms.length+' member'+(ms.length==1?'':'s')+'</span>'+(cv?'<span class="badge b strong">'+cv+' convicted</span>':'')+(dead?'<span class="badge b">☠ '+dead+' deceased</span>':'')+'</div><div class="row" style="margin:0"><button onclick="famEdit(\''+f.id+'\')">Edit</button><button class="d" onclick="famDel(\''+f.id+'\')">Delete</button></div></div>';
+  if(DFEDIT==f.id)h+='<div class="row" style="margin-top:6px"><input id="fe_n" value="'+esc(f.name)+'" maxlength="60"><select id="fe_w">'+dirOpts(d.worlds,f.world,'— world —')+'</select><input id="fe_x" value="'+esc(f.notes)+'" placeholder="Notes" maxlength="300"><button class="p" onclick="famSaveE(\''+f.id+'\')">Save</button><button onclick="famEdit(\'\')">Cancel</button></div>';
+  else if(f.notes)h+='<div class="mut">'+esc(f.notes)+'</div>';
+  h+=ms.map(function(x){return'<div class="m"><div><b>'+esc(x.s.name)+'</b>'+(x.s.death?' <span class="badge b strong">☠ Deceased</span>':'')+dirBadges(dirStatus(x.s))+(x.s.gov?' <span class="badge mayor">🏛️ '+esc(x.s.gov)+'</span>':'')+(x.s.law?' <span class="badge">'+esc(x.s.law)+'</span>':'')+'</div><div class="row" style="margin:0"><input list="dl_famroles" placeholder="Role" maxlength="40" style="max-width:170px" value="'+esc(x.m.role)+'" oninput="famRole(\''+f.id+'\',\''+x.s.id+'\',this.value)"><button class="d" onclick="famDrop(\''+f.id+'\',\''+x.s.id+'\')" title="Remove from family">✕</button></div></div>'}).join('');
+  return h+'<div class="row" style="margin-top:6px"><textarea id="dfa_'+f.id+'" rows="2" placeholder="Add more members: one name per line, optional role after a comma"></textarea><button onclick="famMore(\''+f.id+'\')">Add members</button></div></div>'}).join('')}
+function dirFamView(){var d=dirData();return'<datalist id="dl_famroles">'+FAMROLES.map(function(r){return'<option>'+r+'</option>'}).join('')+'</datalist><div class="card"><h2>Create a family</h2><div class="row"><input id="fm_n" placeholder="Family name (e.g. The Goth family)" maxlength="60"><select id="fm_w">'+dirOpts(d.worlds,'','— world —')+'</select><input id="fm_x" placeholder="Notes (optional)" maxlength="300"></div>'
+ +'<div class="row"><label class="ck" style="margin:0"><input type="checkbox" id="fm_i"><span>⭐ Important family (keep track of them)</span></label></div>'
+ +'<div class="mut" style="margin-bottom:4px"><b>Bulk add members:</b> one name per line, with an optional role after a comma. Anyone already in the registry is linked, and new names are added to the registry without creating duplicates.</div><div class="row"><textarea id="fm_b" rows="5" placeholder="Jane Citizen, Mother&#10;Bob Citizen, Father&#10;Lily Citizen, Child"></textarea></div><div class="row"><button class="p" onclick="famCreate()">Create family</button></div></div>'
+ +'<div class="card"><h2>Families</h2><div class="row"><input id="dfq" style="max-width:320px" placeholder="Search family, member, role or world…" value="'+esc(DFQ)+'" oninput="dfSq(this.value)"><label class="ck" style="margin:0"><input type="checkbox"'+(DFIMP?' checked':'')+' onchange="dfImp(this.checked)"><span>⭐ Important only</span></label></div><div id="dfres">'+dirFamRows()+'</div></div>'}
 function dirSort(a){return a.slice().sort(function(x,y){x=String(x).toLowerCase();y=String(y).toLowerCase();return x<y?-1:x>y?1:0})}
 function dirEnc(s){return encodeURIComponent(s).replace(/'/g,'%27')}
 function dirSave(){DIRFORCE=true;save()}
 function dirOpts(list,sel,none){var h='<option value="">'+none+'</option>';dirSort(list).forEach(function(w){h+='<option'+(w===sel?' selected':'')+'>'+esc(w)+'</option>'});if(sel&&list.indexOf(sel)<0)h+='<option selected>'+esc(sel)+'</option>';return h}
 function dirHas(list,n){var k=jNorm(n);return list.some(function(x){return jNorm(x)==k})}
-function dirTab(n){DIRT=n;[1,2,3].forEach(function(i){$('drv'+i).classList.toggle('hide',i!=n);$('drt'+i).classList.toggle('on',i==n)});DIRFORCE=true;dirRender()}
+function dirTab(n){DIRT=n;[1,2,3,4].forEach(function(i){$('drv'+i).classList.toggle('hide',i!=n);$('drt'+i).classList.toggle('on',i==n)});DIRFORCE=true;dirRender()}
 function dirRender(){var root=$('directory');if(!root||root.classList.contains('hide')){DIRFORCE=false;return}
  try{if(dirAuto())jquiet()}catch(e){}
  var ae=document.activeElement,typing=!DIRFORCE&&ae&&root.contains(ae)&&/^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName);DIRFORCE=false;if(typing)return;
- var d=dirData();$('drt1').textContent='Businesses ('+d.businesses.length+')';$('drt2').textContent='Sims ('+d.sims.length+')';
+ var d=dirData();$('drt1').textContent='Businesses ('+d.businesses.length+')';$('drt2').textContent='Sims ('+d.sims.length+')';$('drt4').textContent='Families ('+d.families.length+')';
  var nm={};d.sims.forEach(function(x){nm[x.name]=1});S.cands.forEach(function(c){if(c.status=='active')nm[c.name]=1});$('dl_owners').innerHTML=dirSort(Object.keys(nm)).map(function(r){return'<option>'+esc(r)+'</option>'}).join('');
- if(DIRT==1)$('drbiz').innerHTML=dirBizView();else if(DIRT==2)$('drsim').innerHTML=dirSimView();else $('drlists').innerHTML=dirListView()}
+ if(DIRT==1)$('drbiz').innerHTML=dirBizView();else if(DIRT==2)$('drsim').innerHTML=dirSimView();else if(DIRT==4)$('drfam').innerHTML=dirFamView();else $('drlists').innerHTML=dirListView()}
 /* --- businesses --- */
 function dirBizView(){var d=dirData(),h='<div class="card"><h2>Add a business</h2>';
  if(!d.worlds.length)h+='<div class="mut" style="margin-bottom:6px">Add at least one world first on the Worlds &amp; types tab.</div>';
@@ -1560,7 +1612,7 @@ function dirCourtLines(cr){var h='';cr.conv.forEach(function(x){h+='<div class="
  cr.pend.forEach(function(x){h+='<div class="m"><div><span class="badge warnb">Before the court</span> Charged in <b>'+esc(x.c.no)+'</b>: '+esc(x.charge)+'</div><button onclick="dirOpenCase(\''+x.c.id+'\')">Open case</button></div>'});return h}
 function dirOpenCase(id){go('justice');jViewCase(id)}
 function dirSimCard(s,st){var d=dirData(),own=dirOwned(s.name);
- var h='<div class="card" style="margin:8px 0"><div class="row" style="justify-content:space-between;margin:0"><div><b style="font-size:16px">'+esc(s.name)+'</b> '+(s.world?'<span class="badge">'+esc(s.world)+'</span>':'<span class="badge mut">no world</span>')+dirBadges(st)+(s.gov?' <span class="badge mayor">🏛️ '+esc(s.gov)+'</span>':'')+(s.law?' <span class="badge">'+(s.polKind=='judge'?'⚖️':'🚔')+' '+esc(s.law)+'</span>':'')+(s.death?' <span class="badge b strong">☠ Deceased</span>':'')+(s.auto?' <small class="mut">added automatically</small>':'')+'</div><div class="row" style="margin:0"><button onclick="dirSimEdit(\''+s.id+'\')">Edit</button><button class="d" onclick="dirSimDel(\''+s.id+'\')">Remove</button></div></div>';
+ var h='<div class="card" style="margin:8px 0"><div class="row" style="justify-content:space-between;margin:0"><div><b style="font-size:16px">'+esc(s.name)+'</b> '+(s.world?'<span class="badge">'+esc(s.world)+'</span>':'<span class="badge mut">no world</span>')+dirBadges(st)+(s.gov?' <span class="badge mayor">🏛️ '+esc(s.gov)+'</span>':'')+(s.law?' <span class="badge">'+(s.polKind=='judge'?'⚖️':'🚔')+' '+esc(s.law)+'</span>':'')+(s.death?' <span class="badge b strong">☠ Deceased</span>':'')+famTag(s.id)+(s.auto?' <small class="mut">added automatically</small>':'')+'</div><div class="row" style="margin:0"><button onclick="dirSimEdit(\''+s.id+'\')">Edit</button><button class="d" onclick="dirSimDel(\''+s.id+'\')">Remove</button></div></div>';
  if(DREDIT==s.id)h+='<div class="row" style="margin-top:6px"><input id="sme_n" value="'+esc(s.name)+'"><select id="sme_w">'+dirOpts(d.worlds,s.world,'— world —')+'</select><input id="sme_x" value="'+esc(s.notes)+'" placeholder="Notes"><button class="p" onclick="dirSimSave(\''+s.id+'\')">Save</button><button onclick="dirEdit(\'\')">Cancel</button></div>';
  else if(s.notes)h+='<div class="mut" style="margin-top:4px">📝 '+esc(s.notes)+'</div>';
  if(own.length)h+='<div style="margin-top:6px"><span class="mut">Owns:</span> '+own.map(function(b){return'<a href="javascript:void(0)" onclick="dirGoBiz(\''+dirEnc(b.name)+'\')">'+esc(b.name)+'</a> <small class="mut">('+esc(b.type)+', '+esc(b.world)+')</small>'}).join(' · ')+'</div>';
@@ -1574,11 +1626,13 @@ function dirRec(id){DRREC=id;DREDIT='';DIRFORCE=true;dirRender()}
 function dirSimAdd(){var d=dirData(),n=$('sm_n').value.trim(),w=$('sm_w').value,x=$('sm_x').value.trim();
  if(!n){alert('Enter the sim\'s name.');return}
  if(d.sims.some(function(s){return jNorm(s.name)==jNorm(n)&&(s.world||'')==w})){alert(n+' is already in the directory'+(w?' for '+w:'')+'.');return}
- d.sims.push({id:uid(),name:n,world:w,notes:x,records:[],added:today()});dirSave()}
+ var C=d.sims.filter(function(s){return jSame(s.name,n)}),add=function(){d.sims.push({id:uid(),name:n,world:w,notes:x,records:[],added:today()});dirSave()};
+ if(C.length){dirAskSame(n,w,C,'',add,function(){});return}
+ add()}
 function dirFromCase(enc){var d=dirData(),n=decodeURIComponent(enc);if(d.sims.some(function(s){return jSame(s.name,n)}))return;d.sims.push({id:uid(),name:n,world:'',notes:'Added from a police case',records:[],added:today()});dirSave()}
 function dirSimSave(id){var d=dirData(),s=d.sims.find(function(x){return x.id==id});if(!s)return;var n=$('sme_n').value.trim();if(!n){alert('A sim needs a name.');return}s.name=n;s.world=$('sme_w').value;s.notes=$('sme_x').value.trim();DREDIT='';dirSave()}
 function dirSimEdit(id){dirEdit(id)}
-function dirSimDel(id){var d=dirData(),s=d.sims.find(function(x){return x.id==id});if(!s)return;ask('Remove '+s.name+' from the directory?'+(s.records.length?' Their '+s.records.length+' recorded offence'+(s.records.length==1?'':'s')+' will be removed too. Court records are not affected.':''),'Remove',function(){if(s.auto||s.gov||s.law)(d.noAuto=d.noAuto||[]).push(s.name);d.sims=d.sims.filter(function(x){return x.id!=id});dirSave()})}
+function dirSimDel(id){var d=dirData(),s=d.sims.find(function(x){return x.id==id});if(!s)return;ask('Remove '+s.name+' from the directory?'+(s.records.length?' Their '+s.records.length+' recorded offence'+(s.records.length==1?'':'s')+' will be removed too. Court records are not affected.':''),'Remove',function(){if(s.auto||s.gov||s.law)(d.noAuto=d.noAuto||[]).push(s.name);d.sims=d.sims.filter(function(x){return x.id!=id});d.families.forEach(function(f){f.members=f.members.filter(function(m){return m.sid!=id})});dirSave()})}
 function dirRecSave(sid){var s=dirData().sims.find(function(x){return x.id==sid});if(!s)return;var ds=$('rx_'+sid).value.trim();if(!ds){alert('Say what the conviction, fine or offence was.');return}
  s.records.push({id:uid(),kind:$('rk_'+sid).value,date:$('rd_'+sid).value||today(),desc:ds,amount:$('ra_'+sid).value.trim(),ref:$('rr_'+sid).value.trim()});DRREC='';dirSave()}
 function dirRecDel(sid,rid){var s=dirData().sims.find(function(x){return x.id==sid});if(!s)return;var r=s.records.find(function(x){return x.id==rid});if(!r)return;ask('Remove this record for '+s.name+'? ('+r.kind+': '+r.desc+')','Remove',function(){s.records=s.records.filter(function(x){return x.id!=rid});dirSave()})}
