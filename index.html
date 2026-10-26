@@ -76,7 +76,7 @@ textarea{font:inherit;color:var(--tx);background:var(--card);border:1px solid va
 <div id="v1">
  <div class="card"><h2>Add party</h2><div class="row"><input id="pn" placeholder="Party name"><input type="color" id="pc" value="#3b5bdb"><button class="p" onclick="addParty()">Add party</button></div></div>
  <div class="card"><h2>Add candidate</h2>
-  <div class="row"><input id="cn" placeholder="Name"><select id="cp" onchange="render()"></select></div>
+  <div class="row"><input id="cn" list="dl_candsim" placeholder="Name (pick a sim from the registry or type a new one)" oninput="candHint()"><select id="cp" onchange="render()"></select></div><datalist id="dl_candsim"></datalist><div id="cnhint" class="mut" style="margin:-2px 0 6px"></div>
   <div class="row"><input id="c1" list="dlp_new" placeholder="Primary role"><input id="c2" list="dls_new" placeholder="Secondary role"><input type="file" id="cf" accept="image/*" title="Photo"><label class="mut" style="flex:none;display:flex;gap:4px;align-items:center"><input type="checkbox" id="cmay" style="flex:none"> Mayor</label><button class="p" onclick="addCand()">Add</button></div>
   <datalist id="roles"></datalist><datalist id="dlp_new"></datalist><datalist id="dls_new"></datalist>
  </div>
@@ -699,8 +699,19 @@ function addCand(){var n=$('cn').value.trim(),pid=$('cp').value;if(!n)return;
  var tm=titleMsg(q1)||titleMsg(q2);if(tm){alert(tm);return}
  var wantM=!!$('cmay').checked,curM=mayorC();if(wantM&&curM){alert('There is already a Mayor ('+curM.name+'). Remove their Mayor badge first.');return}
  var cl=pid?roleClash(pid,null,q1,q2):null;if(cl){alert(cl);return}
- readPhoto($('cf'),function(ph){S.cands.push({id:uid(),name:n,partyId:pid||null,primary:q1,secondary:q2,mayor:wantM,status:'active',photo:ph,seat:(pid&&party(pid)&&party(pid).hs)?'Unseated':null});
- ['cn','c1','c2','cf'].forEach(function(i){$(i).value=''});$('cmay').checked=false;save()})}
+ var fin=function(sm){readPhoto($('cf'),function(ph){var id=uid();S.cands.push({id:id,name:n,partyId:pid||null,primary:q1,secondary:q2,mayor:wantM,status:'active',photo:ph,seat:(pid&&party(pid)&&party(pid).hs)?'Unseated':null});
+  var d=dirData();if(sm)sm.candId=id;else d.sims.push({id:uid(),name:n,world:'',notes:'Added as a politician',records:[],added:today(),candId:id,auto:true});
+  ['cn','c1','c2','cf'].forEach(function(i){$(i).value=''});$('cmay').checked=false;$('cnhint').textContent='';save()})};
+ var C=dirData().sims.filter(function(x){return jSame(x.name,n)});if(!C.length){fin(null);return}
+ dirAskSame(n,'',C,'as a politician',function(){fin(null)},function(){
+  var pk=C.find(function(x){return!x.death&&!candOf(x)})||C[0];
+  if(pk.death){alert(pk.name+' is recorded as deceased in the registry, so they cannot be added as a politician.');return}
+  var ac=candOf(pk);if(ac){alert(pk.name+' is already a politician ('+(ac.partyId&&party(ac.partyId)?party(ac.partyId).name:'unassigned')+'). Open them from the candidate list instead.');return}
+  fin(pk)},['Different sim, add as new','Same sim, link them'])}
+function candOf(sm){return sm.candId?S.cands.find(function(c){return c.id==sm.candId&&c.status=='active'}):null}
+function candSimList(){var el=$('dl_candsim');if(!el)return;el.innerHTML=dirSort(dirData().sims.filter(function(x){return!x.death&&!candOf(x)}).map(function(x){return x.name})).map(function(r){return'<option value="'+esc(r)+'">'}).join('')}
+function candHint(){var n=$('cn').value.trim(),h=$('cnhint');if(!n){h.textContent='';return}var C=dirData().sims.filter(function(x){return jSame(x.name,n)});
+ h.innerHTML=C.length?'In the registry: '+C.slice(0,3).map(function(x){return esc(x.name)+(x.world?' ('+esc(x.world)+')':'')+(x.death?' ☠ deceased':'')+(candOf(x)?' · already a politician':'')}).join('; ')+'. You will be asked to confirm if it is the same sim.':'Not in the registry yet. They will be added to it automatically.'}
 function rmCand(id){var c=S.cands.find(function(x){return x.id==id}),r=$('r'+id).value,p=party(c.partyId),nm=c.name+' - '+(p?p.name:'Unassigned');
  var msg=r=='Death'?'I\'m sorry to hear about the loss of '+nm+'. This death will be recorded in the notices if you click confirm.':r=='Resigned'?'Click confirm to file for the resignation of '+nm+'.':nm+' has finally retired, looks like you need a new candidate. Please confirm this.';
  if(p&&p.leaderId==c.id)msg+=' They are the party leader, so a leadership vote will open.';
@@ -739,7 +750,7 @@ function memberRow(c,assignable){
  return h+(c.secondary?'<button onclick="swapRoles(\''+c.id+'\')" title="Swap primary and secondary roles">⇄ Swap</button>':'')+'<button onclick="edit(\''+c.id+'\')">Edit</button>'+(c.partyId?'<button onclick="releaseCand(\''+c.id+'\')" title="Move to the Unassigned pool">Release</button>':'')+'<select id="r'+c.id+'"><option>Death</option><option>Resigned</option><option>Retired</option></select><button class="d" onclick="rmCand(\''+c.id+'\')">Remove</button></div></div>'}
 
 function render(){
- try{justiceRender()}catch(e){console.error(e)}try{dirRender()}catch(e){console.error(e)}
+ try{candSimList()}catch(e){}try{justiceRender()}catch(e){console.error(e)}try{dirRender()}catch(e){console.error(e)}
  refreshRoleLists();$('rolesTbl').innerHTML=rolesView();$('officeRolesTbl').innerHTML=officeRolesView();
  $('ev').value=S.eligible||'';$('opp').innerHTML=oppView();$('parl').innerHTML=parlView();
  $('notices').innerHTML=(S.notices&&S.notices.length)?S.notices.slice().reverse().map(function(n){return'<div class="m"><div><span class="badge '+(n.type=='Death'?'b':'mut')+'">'+esc(n.type)+'</span> '+esc(n.text)+'</div><small class="mut">'+esc(n.date)+'</small></div>'}).join(''):'<span class="mut">No notices yet.</span>';
@@ -1443,12 +1454,12 @@ var DIRT=1,DIRFORCE=false,DRBQ='',DRBW='',DRBT='',DRSQ='',DRSW='',DRSR='',DREDIT
 function dirData(){if(!S.dir)S.dir={worlds:[],types:DIRTYPES.slice(),businesses:[],sims:[]};var d=S.dir;d.worlds=d.worlds||[];d.types=d.types||[];d.businesses=d.businesses||[];d.sims=d.sims||[];d.families=d.families||[];d.families.forEach(function(f){f.members=f.members||[]});d.sims.forEach(function(x){x.records=x.records||[]});return d}
 /* keeps the sim register in step with Government members and court convictions */
 function dirAuto(){var d=dirData(),ch=false,skip=function(n){return(d.noAuto||[]).some(function(x){return jSame(x,n)})};
- (S.cands||[]).forEach(function(c){var role=c.status=='active'?(c.mayor?'Mayor':isSeated(c)?c.seat+' member':''):'',pt=c.partyId&&party(c.partyId),
-  sm=d.sims.find(function(x){return x.candId==c.id})||d.sims.find(function(x){return jSame(x.name,c.name)});
+ (S.cands||[]).forEach(function(c){var role=c.status=='active'?(c.mayor?'Mayor':isSeated(c)?c.seat+' member':'Candidate'):'',pt=c.partyId&&party(c.partyId),
+  sm=d.sims.find(function(x){return x.candId==c.id})||d.sims.find(function(x){return!x.candId&&jSame(x.name,c.name)});
   if(!sm){if(!role||skip(c.name))return;sm={id:uid(),name:c.name,world:'',notes:'',records:[],added:today(),auto:true};d.sims.push(sm);ch=true}
   if(sm.candId!=c.id){sm.candId=c.id;ch=true}
   if(sm.auto&&sm.name!=c.name){sm.name=c.name;ch=true}
-  var g;if(role){if(sm.govRole!=role){sm.govRole=role;ch=true}g=role+(pt?' ('+pt.name+')':'')}
+  var g;if(role){if(sm.govRole!=role){sm.govRole=role;ch=true}g=role+(pt?' ('+pt.name+')':(role=='Candidate'?' (unassigned)':''))}
   else if(sm.govRole)g='Former '+sm.govRole.toLowerCase()+(c.status!='active'?' ('+(({Death:'died',Resigned:'resigned',Retired:'retired'})[c.reason]||(c.reason||c.status).toLowerCase())+')':'');
   if(g!=null&&sm.gov!=g){sm.gov=g;ch=true}
   if(c.status=='removed'&&c.reason=='Death'&&!sm.death&&!sm.deathOff){sm.death={date:c.date||'',cause:'',detail:'',src:'Government death notice'};ch=true}});
@@ -1496,8 +1507,8 @@ function dirSimInfo(x){var d=dirData(),st=dirStatus(x),a=['• '+x.name+' · '+(
  var r=[x.gov,x.law].filter(Boolean);if(r.length)a.push('   Role: '+r.join('; '));
  var fm=d.families.filter(function(f){return f.members.some(function(m){return m.sid==x.id})}).map(function(f){return f.name});if(fm.length)a.push('   Family: '+fm.join(', '));
  if(x.notes)a.push('   Notes: '+x.notes.slice(0,120));if(x.added)a.push('   Added to the registry: '+x.added);return a.join('\n')}
-function dirAskSame(nm,w,C,ctx,onNew,onSame){var msg='A sim called "'+nm+'" is already in the registry'+(C.length>1?' ('+C.length+' matches)':'')+'.\n\n'+C.slice(0,3).map(dirSimInfo).join('\n\n')+(C.length>3?'\n…and '+(C.length-3)+' more':'')+'\n\nYou are adding "'+nm+'"'+(w?' from '+w:' (no world given)')+(ctx?' '+ctx:'')+'.\nIs this a different sim?'+(ctx?'\n"Same sim" links the existing sim instead of creating a new one.':'');
- askYN(msg,onNew,'Add as a new sim','Same sim, do not add');MD_NO=onSame}
+function dirAskSame(nm,w,C,ctx,onNew,onSame,lbl){lbl=lbl||['Add as a new sim','Same sim, do not add'];var msg='A sim called "'+nm+'" is already in the registry'+(C.length>1?' ('+C.length+' matches)':'')+'.\n\n'+C.slice(0,3).map(dirSimInfo).join('\n\n')+(C.length>3?'\n…and '+(C.length-3)+' more':'')+'\n\nYou are adding "'+nm+'"'+(w?' from '+w:' (no world given)')+(ctx?' '+ctx:'')+'.\nIs this a different sim?'+(ctx?'\nChoosing the same sim links the existing registry entry instead of creating a new one.':'');
+ askYN(msg,onNew,lbl[0],lbl[1]);MD_NO=onSame}
 function famAdd(f,text,done){var d=dirData(),r={nw:0,ln:0,dp:0},Q=[];
  String(text||'').split('\n').forEach(function(line){line=line.trim();if(!line)return;var p=line.split(/\t|,/),nm=p[0].replace(/\s+/g,' ').trim();if(nm)Q.push({nm:nm,role:(p[1]||'').trim()})});
  var link=function(sm,role){var m=f.members.find(function(x){return x.sid==sm.id});if(m){if(!m.role&&role)m.role=role;r.dp++;return false}f.members.push({sid:sm.id,role:role});return true},
