@@ -157,7 +157,7 @@ textarea{font:inherit;color:var(--tx);background:var(--card);border:1px solid va
 
 <div id="directory" class="hide jx">
 <div class="row" style="margin:0 0 8px;align-items:center"><button onclick="go('')">← Home</button><b>📒 Directory</b></div>
-<div class="tabs"><button class="t on" id="drt1" onclick="dirTab(1)">Businesses</button><button class="t" id="drt2" onclick="dirTab(2)">Sims</button><button class="t" id="drt3" onclick="dirTab(3)">Worlds &amp; types</button><button class="t" id="drt4" onclick="dirTab(4)">Families</button></div>
+<div class="tabs"><button class="t on" id="drt1" onclick="dirTab(1)">Businesses</button><button class="t" id="drt2" onclick="dirTab(2)">Sims</button><button class="t" id="drt3" onclick="dirTab(3)">Worlds &amp; types</button><button class="t" id="drt4" onclick="dirTab(4)">Households</button></div>
 <datalist id="dl_owners"></datalist>
 <div id="drv1"><div id="drbiz"></div></div>
 <div id="drv2" class="hide"><div id="drsim"></div></div>
@@ -1457,7 +1457,7 @@ var RKINDS=['Conviction','Fine / penalty notice','Caution / warning','Other mino
 var DIRT=1,DIRFORCE=false,DRBQ='',DRBW='',DRBT='',DRSQ='',DRSW='',DRSR='',DREDIT='',DRREC='',DRREN='';
 function dirData(){if(!S.dir)S.dir={worlds:[],types:DIRTYPES.slice(),businesses:[],sims:[]};var d=S.dir;d.worlds=d.worlds||[];d.types=d.types||[];d.businesses=d.businesses||[];d.sims=d.sims||[];d.families=d.families||[];d.families.forEach(function(f){f.members=f.members||[]});d.sims.forEach(function(x){x.records=x.records||[]});return d}
 /* keeps the sim register in step with Government members and court convictions */
-function dirAuto(){var d=dirData(),ch=false,skip=function(n){return(d.noAuto||[]).some(function(x){return jSame(x,n)})};
+function dirAuto(){var d=dirData(),ch=hhSync(d),skip=function(n){return(d.noAuto||[]).some(function(x){return jSame(x,n)})};
  (S.cands||[]).forEach(function(c){var role=c.status=='active'?(c.mayor?'Mayor':isSeated(c)?c.seat+' member':'Candidate'):'',pt=c.partyId&&party(c.partyId),
   sm=d.sims.find(function(x){return x.candId==c.id})||d.sims.find(function(x){return!x.candId&&jSame(x.name,c.name)});
   if(!sm){if(!role||skip(c.name))return;sm={id:uid(),name:c.name,world:'',notes:'',records:[],added:today(),auto:true};d.sims.push(sm);ch=true}
@@ -1501,80 +1501,88 @@ function dirDeathSave(id){var d=dirData(),s=d.sims.find(function(x){return x.id=
 function dirDeathDel(id){var d=dirData(),s=d.sims.find(function(x){return x.id==id});if(!s)return;ask('Remove the death record for '+s.name+'?','Remove',function(){delete s.death;s.deathOff=true;dirSave()})}
 
 
-/* ----- families ----- */
-var DFQ='',DFIMP=false,DFEDIT='',FAMROLES=['Head of family','Parent','Mother','Father','Spouse','Partner','Child','Sibling','Grandparent','Guardian','Other relative'];
+/* ----- households ----- */
+var DFQ='',DFIMP=false,DFEDIT='',DFMV='',DFPQ={},STAGES=['Infant','Toddler','Child','Teen','Young Adult','Adult','Elder'],OCC=['Alien','Werewolf','Spell Caster','Vampire','Fairy'],OCCI={Alien:'👽',Werewolf:'🐺','Spell Caster':'🪄',Vampire:'🧛',Fairy:'🧚'};
 function dirRefresh(){DIRFORCE=true;dirRender()}
 function dFam(id){return dirData().families.find(function(f){return f.id==id})}
-function famTag(sid){return dirData().families.filter(function(f){return f.members.some(function(m){return m.sid==sid})}).map(function(f){return' <span class="badge">👪 '+esc(f.name)+'</span>'}).join('')}
+function hhOf(sid){return dirData().families.find(function(f){return f.members.some(function(m){return m.sid==sid})})}
+function hhWorld(sm){var f=hhOf(sm.id);return f&&f.world?f.world:''}
+function hhSur(f){return f.name.replace(/^the\s+/i,'').replace(/\s+(household|family)$/i,'').trim()}
+function hhKind(t){var k=String(t).toLowerCase().replace(/[^a-z]/g,''),st=STAGES.find(function(x){return x.toLowerCase().replace(/ /g,'')==k});if(!st&&k=='baby')st='Infant';if(st)return{stage:st};
+ var o=k=='spellcaster'||k=='spellcasters'?'Spell Caster':OCC.find(function(x){return x.toLowerCase().replace(/ /g,'')==k});if(o)return{occult:o};
+ if(/^magicalrealm/.test(k)||k=='magicrealm'||k=='magicrealms')return{magic:true};return null}
+function hhTraits(x){return(x.stage?' <span class="badge">'+esc(x.stage)+'</span>':'')+(x.occult?' <span class="badge">'+(OCCI[x.occult]||'')+' '+esc(x.occult)+'</span>':'')+(x.magic?' <span class="badge" style="background:#ede7f6">✦ Magical Realms</span>':'')}
+function hhSync(d){var ch=false;d.families.forEach(function(f){f.members.forEach(function(m){var sm=d.sims.find(function(x){return x.id==m.sid});if(!sm)return;
+  if(f.world&&sm.world!=f.world){sm.world=f.world;ch=true}
+  if(!sm.stage&&m.role){var k=hhKind(m.role);if(k&&k.stage){sm.stage=k.stage;ch=true}}})});return ch}
+function hhSet(sid,f,v){var sm=dirData().sims.find(function(x){return x.id==sid});if(!sm)return;if(f=='magic')sm.magic=!!v;else sm[f]=v;dirSave()}
+function hhSel(sid,f,list,val,blank){return'<select style="max-width:140px" onchange="hhSet(\''+sid+'\',\''+f+'\',this.value)">'+jopts(list,val||'',blank)+'</select>'}
+function hhLeave(d,sid,except){var n=0;d.families.forEach(function(g){if(g!=except&&g.members.some(function(x){return x.sid==sid})){g.members=g.members.filter(function(x){return x.sid!=sid});n++}});return n}
+function famTag(sid){var f=hhOf(sid);return f?' <span class="badge">🏠 '+esc(f.name)+'</span>':''}
 function dirSimInfo(x){var d=dirData(),st=dirStatus(x),a=['• '+x.name+' · '+(x.world||'no world recorded')],b=[];
  if(x.death)b.push('Deceased '+(x.death.date||'')+(x.death.cause?' ('+(x.death.cause=='Other'?x.death.detail:x.death.cause)+')':''));if(st.conv)b.push('Convicted');if(st.pend)b.push('Before the court');if(st.minor)b.push('Minor offence');if(!st.conv&&!st.pend&&!st.minor)b.push('Clear record');a.push('   Status: '+b.join(', '));
- var r=[x.gov,x.law].filter(Boolean);if(r.length)a.push('   Role: '+r.join('; '));
- var fm=d.families.filter(function(f){return f.members.some(function(m){return m.sid==x.id})}).map(function(f){return f.name});if(fm.length)a.push('   Family: '+fm.join(', '));
+ if(x.stage||x.occult||x.magic)a.push('   Type: '+[x.stage,x.occult,x.magic?'Magical Realms jurisdiction':''].filter(Boolean).join(', '));var r=[x.gov,x.law].filter(Boolean);if(r.length)a.push('   Role: '+r.join('; '));
+ var fm=d.families.filter(function(f){return f.members.some(function(m){return m.sid==x.id})}).map(function(f){return f.name});if(fm.length)a.push('   Household: '+fm.join(', '));
  if(x.notes)a.push('   Notes: '+x.notes.slice(0,120));if(x.added)a.push('   Added to the registry: '+x.added);return a.join('\n')}
 function dirAskSame(nm,w,C,ctx,onNew,onSame,lbl){lbl=lbl||['Add as a new sim','Same sim, do not add'];var msg='A sim called "'+nm+'" is already in the registry'+(C.length>1?' ('+C.length+' matches)':'')+'.\n\n'+C.slice(0,3).map(dirSimInfo).join('\n\n')+(C.length>3?'\n…and '+(C.length-3)+' more':'')+'\n\nYou are adding "'+nm+'"'+(w?' from '+w:' (no world given)')+(ctx?' '+ctx:'')+'.\nIs this a different sim?'+(ctx?'\nChoosing the same sim links the existing registry entry instead of creating a new one.':'');
  askYN(msg,onNew,lbl[0],lbl[1]);MD_NO=onSame}
-function famAdd(f,text,done){var d=dirData(),r={nw:0,ln:0,dp:0},Q=[];
- String(text||'').split('\n').forEach(function(line){line=line.trim();if(!line)return;var p=line.split(/\t|,/),nm=p[0].replace(/\s+/g,' ').trim();if(nm)Q.push({nm:nm,role:(p[1]||'').trim()})});
- var link=function(sm,role){var m=f.members.find(function(x){return x.sid==sm.id});if(m){if(!m.role&&role)m.role=role;r.dp++;return false}f.members.push({sid:sm.id,role:role});return true},
- mk=function(it){var sm={id:uid(),name:it.nm,world:f.world||'',notes:'Added with the '+f.name+' family',records:[],added:today()};d.sims.push(sm);link(sm,it.role);r.nw++};
+function famAdd(f,text,done){var d=dirData(),r={nw:0,ln:0,dp:0,mv:0,wc:0},Q=[],sur=hhSur(f);
+ String(text||'').split('\n').forEach(function(line){var T=line.split(/\t|,/).map(function(x){return x.trim()}).filter(Boolean);if(!T.length)return;var first=T.shift().replace(/\s+/g,' '),last='',a={};
+  T.forEach(function(t){var k=hhKind(t);if(k){for(var q in k)a[q]=k[q]}else if(!last)last=t.replace(/\s+/g,' ')});
+  Q.push({nm:last?first+' '+last:(first.indexOf(' ')>=0?first:first+' '+sur),a:a})});
+ var put=function(sm,a){for(var q in a)sm[q]=a[q]},
+ join=function(sm,a){if(f.members.some(function(x){return x.sid==sm.id})){put(sm,a);r.dp++;return false}
+  r.mv+=hhLeave(d,sm.id,f);if(f.world&&sm.world&&sm.world!=f.world)r.wc++;put(sm,a);f.members.push({sid:sm.id,role:''});return true},
+ mk=function(it){var sm={id:uid(),name:it.nm,world:f.world||'',notes:'Added with the '+f.name+' household',records:[],added:today()};d.sims.push(sm);join(sm,it.a);r.nw++};
  (function nxt(){var it=Q.shift();if(!it){done(r);return}
   var C=d.sims.filter(function(x){return jSame(x.name,it.nm)}),
-  mem=C.find(function(x){return f.members.some(function(m){return m.sid==x.id})&&(!x.world||!f.world||x.world==f.world)}),
+  mem=C.find(function(x){return f.members.some(function(m){return m.sid==x.id})}),
   sure=C.find(function(x){return x.world&&f.world&&x.world==f.world&&jNorm(x.name)==jNorm(it.nm)});
-  if(mem){link(mem,it.role);return nxt()}
-  if(sure){if(link(sure,it.role))r.ln++;return nxt()}
+  if(mem){join(mem,it.a);return nxt()}
+  if(sure){if(join(sure,it.a))r.ln++;return nxt()}
   if(!C.length){mk(it);return nxt()}
-  dirAskSame(it.nm,f.world,C,'to the '+f.name+' family',function(){mk(it);nxt()},function(){var pk=C.find(function(x){return x.world==f.world})||C[0];if(link(pk,it.role))r.ln++;nxt()})})()}
-function famMsg(r){var a=[];if(r.nw)a.push(r.nw+' new sim'+(r.nw==1?'':'s')+' added to the registry');if(r.ln)a.push(r.ln+' sim'+(r.ln==1?'':'s')+' already in the registry linked');if(r.dp)a.push(r.dp+' skipped as already in this family');return a.length?a.join(', ')+'.':'No members were added.'}
-function famCreate(){var d=dirData(),n=$('fm_n').value.trim(),w=$('fm_w').value;if(!n){alert('Give the family a name.');return}
- if(d.families.some(function(f){return jNorm(f.name)==jNorm(n)&&(f.world||'')==w})){alert('There is already a family called '+n+(w?' in '+w:'')+'.');return}
- var f={id:uid(),name:n,world:w,notes:$('fm_x').value.trim(),important:$('fm_i').checked,members:[],added:today()};d.families.push(f);famAdd(f,$('fm_b').value,function(r){dirSave();alert('Family created. '+famMsg(r))})}
-function famMore(id){var f=dFam(id),t=$('dfa_'+id).value;if(!f||!t.trim()){alert('Type or paste at least one name first.');return}famAdd(f,t,function(r){dirSave();alert(famMsg(r))})}
+  dirAskSame(it.nm,f.world,C,'to the '+f.name+' household',function(){mk(it);nxt()},function(){var pk=C.find(function(x){return x.world==f.world})||C[0];if(join(pk,it.a))r.ln++;nxt()})})()}
+function famMsg(r){var a=[];if(r.nw)a.push(r.nw+' new sim'+(r.nw==1?'':'s')+' added to the registry');if(r.ln)a.push(r.ln+' sim'+(r.ln==1?'':'s')+' already in the registry linked');if(r.mv)a.push(r.mv+' moved out of another household');if(r.wc)a.push(r.wc+' now take this household\'s town');if(r.dp)a.push(r.dp+' already in this household and updated');return a.length?a.join(', ')+'.':'No members were added.'}
+function famCreate(){var d=dirData(),n=$('fm_n').value.trim(),w=$('fm_w').value;if(!n){alert('Give the household a name.');return}
+ if(d.families.some(function(f){return jNorm(f.name)==jNorm(n)&&(f.world||'')==w})){alert('There is already a household called '+n+(w?' in '+w:'')+'.');return}
+ var f={id:uid(),name:n,world:w,notes:$('fm_x').value.trim(),important:$('fm_i').checked,members:[],added:today()};d.families.push(f);famAdd(f,$('fm_b').value,function(r){dirSave();alert('Household created. '+famMsg(r))})}
+function famMore(id){var f=dFam(id),t=$('dfa_'+id).value;if(!f||!t.trim()){alert('Type or paste at least one sim first.');return}famAdd(f,t,function(r){dirSave();alert(famMsg(r))})}
 function famStar(id){var f=dFam(id);f.important=!f.important;dirSave()}
-function famRole(id,sid,v){var m=dFam(id).members.find(function(x){return x.sid==sid});if(m){m.role=v;jquiet()}}
 function famDrop(id,sid){var f=dFam(id);f.members=f.members.filter(function(m){return m.sid!=sid});dirSave()}
 function famEdit(id){DFEDIT=id;dirRefresh()}
-function famSaveE(id){var f=dFam(id),n=$('fe_n').value.trim();if(!n){alert('A family needs a name.');return}f.name=n;f.world=$('fe_w').value;f.notes=$('fe_x').value.trim();DFEDIT='';dirSave()}
-function famDel(id){var f=dFam(id);ask('Delete the '+f.name+' family? The sims in it stay in the registry.','Delete',function(){var d=dirData();d.families=d.families.filter(function(x){return x.id!=id});dirSave()})}
+function famSaveE(id){var f=dFam(id),n=$('fe_n').value.trim();if(!n){alert('A household needs a name.');return}f.name=n;var w=$('fe_w').value,d=dirData(),c=0;
+ if(w)f.members.forEach(function(m){var sm=d.sims.find(function(x){return x.id==m.sid});if(sm&&sm.world!=w)c++});f.world=w;f.notes=$('fe_x').value.trim();DFEDIT='';dirSave();if(c)alert('The town was also updated to '+w+' for '+c+' sim'+(c==1?'':'s')+' in the registry.')}
+function famDel(id){var f=dFam(id);ask('Delete the '+f.name+' household? The sims in it stay in the registry.','Delete',function(){var d=dirData();d.families=d.families.filter(function(x){return x.id!=id});dirSave()})}
 function dfSq(v){DFQ=v;var r=$('dfres');if(r)r.innerHTML=dirFamRows()}
 function dfImp(c){DFIMP=c;dirRefresh()}
-function dirFamRows(){var d=dirData(),q=jNorm(DFQ),L=d.families.filter(function(f){if(DFIMP&&!f.important)return false;if(!q)return true;return jNorm([f.name,f.world,f.notes].concat(f.members.map(function(m){var x=d.sims.find(function(s){return s.id==m.sid});return(x?x.name:'')+' '+m.role})).join(' ')).indexOf(q)>=0}).sort(function(a,b){return(b.important?1:0)-(a.important?1:0)||(a.name<b.name?-1:1)});
- if(!L.length)return'<span class="mut">'+(d.families.length?'No family matches.':'No families yet. Create one above and paste in its members.')+'</span>';
- return L.map(function(f){var ms=f.members.map(function(m){return{m:m,s:d.sims.find(function(x){return x.id==m.sid})}}).filter(function(x){return x.s}),cv=0,dead=0;ms.forEach(function(x){if(dirStatus(x.s).conv)cv++;if(x.s.death)dead++});
-  var h='<div class="card" style="margin:8px 0 0"><div class="row" style="margin:0;justify-content:space-between"><div class="row" style="margin:0"><button onclick="famStar(\''+f.id+'\')" title="Mark as important" style="border:0;background:none;font-size:20px;flex:none">'+(f.important?'⭐':'☆')+'</button><b>'+esc(f.name)+'</b>'+(f.world?'<span class="mut">'+esc(f.world)+'</span>':'')+'<span class="badge">'+ms.length+' member'+(ms.length==1?'':'s')+'</span>'+(cv?'<span class="badge b strong">'+cv+' convicted</span>':'')+(dead?'<span class="badge b">☠ '+dead+' deceased</span>':'')+'</div><div class="row" style="margin:0"><button onclick="famEdit(\''+f.id+'\')">Edit</button><button class="d" onclick="famDel(\''+f.id+'\')">Delete</button></div></div>';
-  if(DFEDIT==f.id)h+='<div class="row" style="margin-top:6px"><input id="fe_n" value="'+esc(f.name)+'" maxlength="60"><select id="fe_w">'+dirOpts(d.worlds,f.world,'— world —')+'</select><input id="fe_x" value="'+esc(f.notes)+'" placeholder="Notes" maxlength="300"><button class="p" onclick="famSaveE(\''+f.id+'\')">Save</button><button onclick="famEdit(\'\')">Cancel</button></div>';
-  else if(f.notes)h+='<div class="mut">'+esc(f.notes)+'</div>';
-  h+=ms.map(function(x){return'<div class="m"><div><b>'+esc(x.s.name)+'</b>'+(x.s.death?' <span class="badge b strong">☠ Deceased</span>':'')+dirBadges(dirStatus(x.s))+(x.s.gov?' <span class="badge mayor">🏛️ '+esc(x.s.gov)+'</span>':'')+(x.s.law?' <span class="badge">'+esc(x.s.law)+'</span>':'')+'</div><div class="row" style="margin:0"><input list="dl_famroles" placeholder="Role" maxlength="40" style="max-width:170px" value="'+esc(x.m.role)+'" oninput="famRole(\''+f.id+'\',\''+x.s.id+'\',this.value)">'+famMoveSel(f,x.s.id)+'<button class="d" onclick="famDrop(\''+f.id+'\',\''+x.s.id+'\')" title="Remove from family">✕</button></div></div>'+famMoveNewUi(f,x.s.id)}).join('');
-  return h+famPickUi(f)+'<div class="row" style="margin-top:6px"><textarea id="dfa_'+f.id+'" rows="2" placeholder="Add more members: one name per line, optional role after a comma"></textarea><button onclick="famMore(\''+f.id+'\')">Add members</button></div></div>'}).join('')}
-function dirFamView(){var d=dirData();return'<datalist id="dl_famroles">'+FAMROLES.map(function(r){return'<option>'+r+'</option>'}).join('')+'</datalist><div class="card"><h2>Create a family</h2><div class="row"><input id="fm_n" placeholder="Family name (e.g. The Goth family)" maxlength="60"><select id="fm_w">'+dirOpts(d.worlds,'','— world —')+'</select><input id="fm_x" placeholder="Notes (optional)" maxlength="300"></div>'
- +'<div class="row"><label class="ck" style="margin:0"><input type="checkbox" id="fm_i"><span>⭐ Important family (keep track of them)</span></label></div>'
- +'<div class="mut" style="margin-bottom:4px"><b>Bulk add members:</b> one name per line, with an optional role after a comma. Anyone already in the registry is linked, and new names are added to the registry without creating duplicates.</div><div class="row"><textarea id="fm_b" rows="5" placeholder="Jane Citizen, Mother&#10;Bob Citizen, Father&#10;Lily Citizen, Child"></textarea></div><div class="row"><button class="p" onclick="famCreate()">Create family</button></div></div>'
- +'<div class="card"><h2>Families</h2><div class="row"><input id="dfq" style="max-width:320px" placeholder="Search family, member, role or world…" value="'+esc(DFQ)+'" oninput="dfSq(this.value)"><label class="ck" style="margin:0"><input type="checkbox"'+(DFIMP?' checked':'')+' onchange="dfImp(this.checked)"><span>⭐ Important only</span></label></div><div id="dfres">'+dirFamRows()+'</div></div>'}
-
-/* ----- moving sims between families ----- */
-var DFMV='',DFPQ={};
-function famPickUi(f){return'<div class="mut" style="margin-top:8px">Add a sim that is already in the registry</div><div class="row" style="margin:2px 0"><input placeholder="Search the registry by name or world…" value="'+esc(DFPQ[f.id]||'')+'" oninput="famPQ(\''+f.id+'\',this.value)"></div><div id="dfp_'+f.id+'">'+famPickRows(f.id)+'</div>'}
+function famPickUi(f){return'<div class="mut" style="margin-top:8px">Add a sim that is already in the registry</div><div class="row" style="margin:2px 0"><input placeholder="Search the registry by name or town…" value="'+esc(DFPQ[f.id]||'')+'" oninput="famPQ(\''+f.id+'\',this.value)"></div><div id="dfp_'+f.id+'">'+famPickRows(f.id)+'</div>'}
 function famPickRows(fid){var d=dirData(),f=dFam(fid),q=jNorm(DFPQ[fid]||'');if(!f||!q)return'';
  var L=d.sims.filter(function(x){return!f.members.some(function(m){return m.sid==x.id})&&jNorm(x.name+' '+(x.world||'')).indexOf(q)>=0}).slice(0,8);
- if(!L.length)return'<span class="mut">No matching sim outside this family.</span>';
- return L.map(function(x){var o=d.families.filter(function(g){return g.id!=fid&&g.members.some(function(m){return m.sid==x.id})});
-  return'<div class="m"><div><b>'+esc(x.name)+'</b> <small class="mut">'+(x.world?esc(x.world):'no world')+'</small>'+(x.death?' <span class="badge b">☠</span>':'')+(o.length?' <small class="mut">Currently in: '+o.map(function(g){return esc(g.name)}).join(', ')+'</small>':'')+'</div><div class="row" style="margin:0"><button onclick="famPick(\''+fid+'\',\''+x.id+'\',0)">Add here</button>'+(o.length?'<button onclick="famPick(\''+fid+'\',\''+x.id+'\',1)">Move here</button>':'')+'</div></div>'}).join('')}
+ if(!L.length)return'<span class="mut">No matching sim outside this household.</span>';
+ return L.map(function(x){var o=hhOf(x.id);return'<div class="m"><div><b>'+esc(x.name)+'</b> <small class="mut">'+(x.world?esc(x.world):'no town')+'</small>'+hhTraits(x)+(x.death?' <span class="badge b">☠</span>':'')+(o?' <small class="mut">Currently in: '+esc(o.name)+'</small>':'')+'</div><button onclick="famPick(\''+fid+'\',\''+x.id+'\')">'+(o?'Move here':'Add here')+'</button></div>'}).join('')}
 function famPQ(fid,v){DFPQ[fid]=v;var r=$('dfp_'+fid);if(r)r.innerHTML=famPickRows(fid)}
-function famPick(fid,sid,mv){var d=dirData(),f=dFam(fid);if(!f||f.members.some(function(m){return m.sid==sid}))return;var role='';
- if(mv)d.families.forEach(function(g){if(g.id==fid)return;var m=g.members.find(function(x){return x.sid==sid});if(m){role=role||m.role;g.members=g.members.filter(function(x){return x.sid!=sid})}});
- f.members.push({sid:sid,role:role});DFPQ[fid]='';dirSave()}
-function famMoveSel(f,sid){var O=dirData().families.filter(function(g){return g.id!=f.id});
- return'<select style="max-width:150px" onchange="famMoveGo(\''+f.id+'\',\''+sid+'\',this.value)"><option value="">Move to…</option>'+O.map(function(g){return'<option value="'+g.id+'">'+esc(g.name)+(g.world?' · '+esc(g.world):'')+'</option>'}).join('')+'<option value="__new">➕ A new family…</option></select>'}
-function famMoveGo(from,sid,to){if(!to)return;if(to=='__new'){DFMV=from+'|'+sid;dirRefresh();return}
- var d=dirData(),a=dFam(from),b=dFam(to);if(!a||!b)return;var m=a.members.find(function(x){return x.sid==sid});a.members=a.members.filter(function(x){return x.sid!=sid});
- if(!b.members.some(function(x){return x.sid==sid}))b.members.push({sid:sid,role:m?m.role:''});dirSave()}
-function famMoveNewUi(f,sid){if(DFMV!=f.id+'|'+sid)return'';return'<div class="row" style="margin:2px 0 6px"><input id="mv_n" maxlength="60" placeholder="Name for the new family"><button class="p" onclick="famMoveNew()">Create family and move</button><button onclick="DFMV=\'\';dirRefresh()">Cancel</button></div>'}
-function famMoveNew(){var d=dirData(),k=DFMV.split('|'),a=dFam(k[0]),n=($('mv_n')||{}).value;n=(n||'').trim();if(!a)return;if(!n){alert('Give the new family a name.');return}
- if(d.families.some(function(f){return jNorm(f.name)==jNorm(n)&&(f.world||'')==(a.world||'')})){alert('There is already a family called '+n+'. Use "Move to…" and pick it from the list instead.');return}
- var m=a.members.find(function(x){return x.sid==k[1]});a.members=a.members.filter(function(x){return x.sid!=k[1]});d.families.push({id:uid(),name:n,world:a.world||'',notes:'',important:false,members:[{sid:k[1],role:m?m.role:''}],added:today()});DFMV='';dirSave()}
-function famSimUi(s){var d=dirData(),O=d.families.filter(function(f){return!f.members.some(function(m){return m.sid==s.id})});if(!O.length)return'';
- return'<div class="row" style="margin:6px 0 0"><select onchange="famAddSim(this.value,\''+s.id+'\')"><option value="">Add to a family…</option>'+O.map(function(f){return'<option value="'+f.id+'">'+esc(f.name)+(f.world?' · '+esc(f.world):'')+'</option>'}).join('')+'</select></div>'}
-function famAddSim(fid,sid){var f=dFam(fid);if(!f||!fid||f.members.some(function(m){return m.sid==sid}))return;f.members.push({sid:sid,role:''});dirSave()}
+function famPick(fid,sid){var d=dirData(),f=dFam(fid);if(!f||f.members.some(function(m){return m.sid==sid}))return;hhLeave(d,sid,f);f.members.push({sid:sid,role:''});DFPQ[fid]='';dirSave()}
+function famMoveSel(f,sid){var O=dirData().families.filter(function(g){return g.id!=f.id});return'<select style="max-width:150px" onchange="famMoveGo(\''+f.id+'\',\''+sid+'\',this.value)"><option value="">Move to…</option>'+O.map(function(g){return'<option value="'+g.id+'">'+esc(g.name)+(g.world?' · '+esc(g.world):'')+'</option>'}).join('')+'<option value="__new">➕ A new household…</option></select>'}
+function famMoveGo(from,sid,to){if(!to)return;if(to=='__new'){DFMV=from+'|'+sid;dirRefresh();return}var d=dirData(),b=dFam(to);if(!b||!dFam(from))return;hhLeave(d,sid,b);if(!b.members.some(function(x){return x.sid==sid}))b.members.push({sid:sid,role:''});dirSave()}
+function famMoveNewUi(f,sid){if(DFMV!=f.id+'|'+sid)return'';return'<div class="row" style="margin:2px 0 6px"><input id="mv_n" maxlength="60" placeholder="Name for the new household"><button class="p" onclick="famMoveNew()">Create household and move</button><button onclick="DFMV=\'\';dirRefresh()">Cancel</button></div>'}
+function famMoveNew(){var d=dirData(),k=DFMV.split('|'),a=dFam(k[0]),n=(($('mv_n')||{}).value||'').trim();if(!a)return;if(!n){alert('Give the new household a name.');return}
+ if(d.families.some(function(f){return jNorm(f.name)==jNorm(n)&&(f.world||'')==(a.world||'')})){alert('There is already a household called '+n+'. Use "Move to…" and pick it from the list instead.');return}
+ var nf={id:uid(),name:n,world:a.world||'',notes:'',important:false,members:[],added:today()};hhLeave(d,k[1],nf);nf.members.push({sid:k[1],role:''});d.families.push(nf);DFMV='';dirSave()}
+function famSimUi(s){var d=dirData(),cur=hhOf(s.id),O=d.families.filter(function(f){return!cur||f.id!=cur.id});if(!O.length)return'';
+ return'<div class="row" style="margin:6px 0 0"><select onchange="famAddSim(this.value,\''+s.id+'\')"><option value="">'+(cur?'Move to a household…':'Add to a household…')+'</option>'+O.map(function(f){return'<option value="'+f.id+'">'+esc(f.name)+(f.world?' · '+esc(f.world):'')+'</option>'}).join('')+'</select></div>'}
+function famAddSim(fid,sid){var f=dFam(fid);if(!f||!fid||f.members.some(function(m){return m.sid==sid}))return;hhLeave(dirData(),sid,f);f.members.push({sid:sid,role:''});dirSave()}
+function dirFamRows(){var d=dirData(),q=jNorm(DFQ),L=d.families.filter(function(f){if(DFIMP&&!f.important)return false;if(!q)return true;return jNorm([f.name,f.world,f.notes].concat(f.members.map(function(m){var x=d.sims.find(function(s){return s.id==m.sid});return x?x.name+' '+(x.stage||'')+' '+(x.occult||'')+(x.magic?' magical realms':''):''})).join(' ')).indexOf(q)>=0}).sort(function(a,b){return(b.important?1:0)-(a.important?1:0)||(a.name<b.name?-1:1)});
+ if(!L.length)return'<span class="mut">'+(d.families.length?'No household matches.':'No households yet. Create one above and paste in its sims.')+'</span>';
+ return L.map(function(f){var ms=f.members.map(function(m){return{m:m,s:d.sims.find(function(x){return x.id==m.sid})}}).filter(function(x){return x.s}),cv=0,dead=0;ms.forEach(function(x){if(dirStatus(x.s).conv)cv++;if(x.s.death)dead++});
+  var h='<div class="card" style="margin:8px 0 0"><div class="row" style="margin:0;justify-content:space-between"><div class="row" style="margin:0"><button onclick="famStar(\''+f.id+'\')" title="Mark as important" style="border:0;background:none;font-size:20px;flex:none">'+(f.important?'⭐':'☆')+'</button><b>'+esc(f.name)+'</b>'+(f.world?'<span class="badge">'+esc(f.world)+'</span>':'<span class="badge mut">no town</span>')+'<span class="badge">'+ms.length+' member'+(ms.length==1?'':'s')+'</span>'+(cv?'<span class="badge b strong">'+cv+' convicted</span>':'')+(dead?'<span class="badge b">☠ '+dead+' deceased</span>':'')+'</div><div class="row" style="margin:0"><button onclick="famEdit(\''+f.id+'\')">Edit</button><button class="d" onclick="famDel(\''+f.id+'\')">Delete</button></div></div>';
+  if(DFEDIT==f.id)h+='<div class="row" style="margin-top:6px"><input id="fe_n" value="'+esc(f.name)+'" maxlength="60"><select id="fe_w">'+dirOpts(d.worlds,f.world,'— town / world —')+'</select><input id="fe_x" value="'+esc(f.notes)+'" placeholder="Notes" maxlength="300"><button class="p" onclick="famSaveE(\''+f.id+'\')">Save</button><button onclick="famEdit(\'\')">Cancel</button></div><div class="mut">Changing the town also updates it on every member in the registry.</div>';
+  else if(f.notes)h+='<div class="mut">'+esc(f.notes)+'</div>';
+  h+=ms.map(function(x){var sid=x.s.id;return'<div class="m"><div><b>'+esc(x.s.name)+'</b>'+hhTraits(x.s)+(x.s.death?' <span class="badge b strong">☠ Deceased</span>':'')+dirBadges(dirStatus(x.s))+(x.s.gov?' <span class="badge mayor">🏛️ '+esc(x.s.gov)+'</span>':'')+(x.s.law?' <span class="badge">'+esc(x.s.law)+'</span>':'')+'</div><div class="row" style="margin:0">'+hhSel(sid,'stage',STAGES,x.s.stage,'— life stage —')+hhSel(sid,'occult',OCC,x.s.occult,'— no type —')+'<label class="ck" style="margin:0" title="Falls under the Magical Realms jurisdiction"><input type="checkbox"'+(x.s.magic?' checked':'')+' onchange="hhSet(\''+sid+'\',\'magic\',this.checked)"><span>✦ Magical Realms</span></label>'+famMoveSel(f,sid)+'<button class="d" onclick="famDrop(\''+f.id+'\',\''+sid+'\')" title="Remove from household">✕</button></div></div>'+famMoveNewUi(f,sid)}).join('');
+  return h+famPickUi(f)+'<div class="row" style="margin-top:6px"><textarea id="dfa_'+f.id+'" rows="2" placeholder="Add more new sims: one per line, e.g. Sam, Smith, Teen"></textarea><button onclick="famMore(\''+f.id+'\')">Add sims</button></div></div>'}).join('')}
+function dirFamView(){var d=dirData();return'<div class="card"><h2>Create a household</h2><div class="row"><input id="fm_n" placeholder="Household name, also used as the last name (e.g. Citizen)" maxlength="60"><select id="fm_w">'+dirOpts(d.worlds,'','— town / world —')+'</select><input id="fm_x" placeholder="Notes (optional)" maxlength="300"></div>'
+ +'<div class="row"><label class="ck" style="margin:0"><input type="checkbox" id="fm_i"><span>⭐ Important household (keep track of them)</span></label></div>'
+ +'<div class="mut" style="margin-bottom:4px"><b>Bulk add sims:</b> one sim per line. Write the first name, then a last name only if it differs from the household name, then the life stage ('+STAGES.join(', ')+'). You can also add a type ('+OCC.join(', ')+') and <i>Magical Realms</i>. Sims already in the registry are linked, and new ones are added without duplicates. Everyone takes the household\'s town.</div><div class="row"><textarea id="fm_b" rows="5" placeholder="Jane, Adult&#10;Bob, Adult&#10;Lily, Child&#10;Sam, Smith, Teen, Vampire"></textarea></div><div class="row"><button class="p" onclick="famCreate()">Create household</button></div></div>'
+ +'<div class="card"><h2>Households</h2><div class="row"><input id="dfq" style="max-width:320px" placeholder="Search household, member or town…" value="'+esc(DFQ)+'" oninput="dfSq(this.value)"><label class="ck" style="margin:0"><input type="checkbox"'+(DFIMP?' checked':'')+' onchange="dfImp(this.checked)"><span>⭐ Important only</span></label></div><div id="dfres">'+dirFamRows()+'</div></div>'}
 function dirSort(a){return a.slice().sort(function(x,y){x=String(x).toLowerCase();y=String(y).toLowerCase();return x<y?-1:x>y?1:0})}
 function dirEnc(s){return encodeURIComponent(s).replace(/'/g,'%27')}
 function dirSave(){DIRFORCE=true;save()}
@@ -1584,7 +1592,7 @@ function dirTab(n){DIRT=n;[1,2,3,4].forEach(function(i){$('drv'+i).classList.tog
 function dirRender(){var root=$('directory');if(!root||root.classList.contains('hide')){DIRFORCE=false;return}
  try{if(dirAuto())jquiet()}catch(e){}
  var ae=document.activeElement,typing=!DIRFORCE&&ae&&root.contains(ae)&&/^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName);DIRFORCE=false;if(typing)return;
- var d=dirData();$('drt1').textContent='Businesses ('+d.businesses.length+')';$('drt2').textContent='Sims ('+d.sims.length+')';$('drt4').textContent='Families ('+d.families.length+')';
+ var d=dirData();$('drt1').textContent='Businesses ('+d.businesses.length+')';$('drt2').textContent='Sims ('+d.sims.length+')';$('drt4').textContent='Households ('+d.families.length+')';
  var nm={};d.sims.forEach(function(x){nm[x.name]=1});S.cands.forEach(function(c){if(c.status=='active')nm[c.name]=1});$('dl_owners').innerHTML=dirSort(Object.keys(nm)).map(function(r){return'<option>'+esc(r)+'</option>'}).join('');
  if(DIRT==1)$('drbiz').innerHTML=dirBizView();else if(DIRT==2)$('drsim').innerHTML=dirSimView();else if(DIRT==4)$('drfam').innerHTML=dirFamView();else $('drlists').innerHTML=dirListView()}
 /* --- businesses --- */
@@ -1632,7 +1640,7 @@ function dirSimView(){var d=dirData(),h='<div class="card"><h2>Add a sim</h2><di
  +'<select id="dsr" onchange="dirSf()"><option value="">Any record</option><option value="conv"'+(DRSR=='conv'?' selected':'')+'>Convicted</option><option value="minor"'+(DRSR=='minor'?' selected':'')+'>Fine / minor offence</option><option value="court"'+(DRSR=='court'?' selected':'')+'>Before the court</option><option value="clear"'+(DRSR=='clear'?' selected':'')+'>Clear</option><option value="dead"'+(DRSR=='dead'?' selected':'')+'>Deceased</option></select></div><div id="dsres">'+dirSimRows()+'</div></div>';return h}
 function dirSq(v){DRSQ=v;var r=$('dsres');if(r)r.innerHTML=dirSimRows()}
 function dirSf(){DRSW=$('dsw').value;DRSR=$('dsr').value;var r=$('dsres');if(r)r.innerHTML=dirSimRows()}
-function dirSimBlob(s,st){var P=[s.name,s.world,s.notes,s.gov,s.law];if(s.death)P.push('deceased died death',s.death.cause,s.death.detail);s.records.forEach(function(r){P.push(r.kind,r.desc,r.amount,r.ref,r.date)});dirOwned(s.name).forEach(function(b){P.push(b.name,b.type)});st.cr.conv.forEach(function(x){P.push('conviction guilty',x.c.no,x.charge,x.pen)});st.cr.pend.forEach(function(x){P.push('court charged',x.c.no,x.charge)});if(st.conv)P.push('convicted');if(st.minor)P.push('fine minor offence');if(st.pend)P.push('before the court');return jNorm(P.join(' '))}
+function dirSimBlob(s,st){var P=[s.name,s.world,s.notes,s.gov,s.law,s.stage,s.occult,s.magic?'magical realms':''];if(s.death)P.push('deceased died death',s.death.cause,s.death.detail);s.records.forEach(function(r){P.push(r.kind,r.desc,r.amount,r.ref,r.date)});dirOwned(s.name).forEach(function(b){P.push(b.name,b.type)});st.cr.conv.forEach(function(x){P.push('conviction guilty',x.c.no,x.charge,x.pen)});st.cr.pend.forEach(function(x){P.push('court charged',x.c.no,x.charge)});if(st.conv)P.push('convicted');if(st.minor)P.push('fine minor offence');if(st.pend)P.push('before the court');return jNorm(P.join(' '))}
 function dirSimRows(){var d=dirData(),terms=jNorm(DRSQ).split(' ').filter(Boolean),h='';
  var list=d.sims.map(function(s){return{s:s,st:dirStatus(s)}}).filter(function(e){if(DRSW&&e.s.world!=DRSW)return false;
   if(DRSR=='dead'&&!e.s.death)return false;if(DRSR=='conv'&&!e.st.conv)return false;if(DRSR=='minor'&&!e.st.minor)return false;if(DRSR=='court'&&!e.st.pend)return false;if(DRSR=='clear'&&(e.st.conv||e.st.minor||e.st.pend||e.s.death))return false;
@@ -1652,8 +1660,8 @@ function dirCourtLines(cr){var h='';cr.conv.forEach(function(x){h+='<div class="
  cr.pend.forEach(function(x){h+='<div class="m"><div><span class="badge warnb">Before the court</span> Charged in <b>'+esc(x.c.no)+'</b>: '+esc(x.charge)+'</div><button onclick="dirOpenCase(\''+x.c.id+'\')">Open case</button></div>'});return h}
 function dirOpenCase(id){go('justice');jViewCase(id)}
 function dirSimCard(s,st){var d=dirData(),own=dirOwned(s.name);
- var h='<div class="card" style="margin:8px 0"><div class="row" style="justify-content:space-between;margin:0"><div><b style="font-size:16px">'+esc(s.name)+'</b> '+(s.world?'<span class="badge">'+esc(s.world)+'</span>':'<span class="badge mut">no world</span>')+dirBadges(st)+(s.gov?' <span class="badge mayor">🏛️ '+esc(s.gov)+'</span>':'')+(s.law?' <span class="badge">'+(s.polKind=='judge'?'⚖️':'🚔')+' '+esc(s.law)+'</span>':'')+(s.death?' <span class="badge b strong">☠ Deceased</span>':'')+famTag(s.id)+(s.auto?' <small class="mut">added automatically</small>':'')+'</div><div class="row" style="margin:0"><button onclick="dirSimEdit(\''+s.id+'\')">Edit</button><button class="d" onclick="dirSimDel(\''+s.id+'\')">Remove</button></div></div>';
- if(DREDIT==s.id)h+='<div class="row" style="margin-top:6px"><input id="sme_n" value="'+esc(s.name)+'"><select id="sme_w">'+dirOpts(d.worlds,s.world,'— world —')+'</select><input id="sme_x" value="'+esc(s.notes)+'" placeholder="Notes"><button class="p" onclick="dirSimSave(\''+s.id+'\')">Save</button><button onclick="dirEdit(\'\')">Cancel</button></div>';
+ var h='<div class="card" style="margin:8px 0"><div class="row" style="justify-content:space-between;margin:0"><div><b style="font-size:16px">'+esc(s.name)+'</b> '+(s.world?'<span class="badge">'+esc(s.world)+'</span>':'<span class="badge mut">no world</span>')+dirBadges(st)+(s.gov?' <span class="badge mayor">🏛️ '+esc(s.gov)+'</span>':'')+(s.law?' <span class="badge">'+(s.polKind=='judge'?'⚖️':'🚔')+' '+esc(s.law)+'</span>':'')+(s.death?' <span class="badge b strong">☠ Deceased</span>':'')+hhTraits(s)+famTag(s.id)+(s.auto?' <small class="mut">added automatically</small>':'')+'</div><div class="row" style="margin:0"><button onclick="dirSimEdit(\''+s.id+'\')">Edit</button><button class="d" onclick="dirSimDel(\''+s.id+'\')">Remove</button></div></div>';
+ if(DREDIT==s.id)h+='<div class="row" style="margin-top:6px"><input id="sme_n" value="'+esc(s.name)+'"><select id="sme_w"'+(hhWorld(s)?' disabled title="Set by their household"':'')+'>'+dirOpts(d.worlds,s.world,'— world —')+'</select><select id="sme_a">'+jopts(STAGES,s.stage||'','— life stage —')+'</select><select id="sme_o">'+jopts(OCC,s.occult||'','— no type —')+'</select><label class="ck" style="margin:0"><input type="checkbox" id="sme_m"'+(s.magic?' checked':'')+'><span>✦ Magical Realms</span></label><input id="sme_x" value="'+esc(s.notes)+'" placeholder="Notes"><button class="p" onclick="dirSimSave(\''+s.id+'\')">Save</button><button onclick="dirEdit(\'\')">Cancel</button></div>';
  else if(s.notes)h+='<div class="mut" style="margin-top:4px">📝 '+esc(s.notes)+'</div>';
  if(own.length)h+='<div style="margin-top:6px"><span class="mut">Owns:</span> '+own.map(function(b){return'<a href="javascript:void(0)" onclick="dirGoBiz(\''+dirEnc(b.name)+'\')">'+esc(b.name)+'</a> <small class="mut">('+esc(b.type)+', '+esc(b.world)+')</small>'}).join(' · ')+'</div>';
  h+=famSimUi(s)+dirDeathHtml(s)+'<div style="margin-top:6px"><b>Record</b>'+(s.records.length||st.cr.conv.length||st.cr.pend.length?'':' <span class="mut">Nothing on file.</span>')+'</div>'+dirCourtLines(st.cr);
@@ -1668,7 +1676,7 @@ function dirSimAdd(){var d=dirData(),n=$('sm_n').value.trim(),w=$('sm_w').value,
  if(C.length){dirAskSame(n,w,C,'',add,function(){});return}
  add()}
 function dirFromCase(enc){var d=dirData(),n=decodeURIComponent(enc);if(d.sims.some(function(s){return jSame(s.name,n)}))return;d.sims.push({id:uid(),name:n,world:'',notes:'Added from a police case',records:[],added:today()});dirSave()}
-function dirSimSave(id){var d=dirData(),s=d.sims.find(function(x){return x.id==id});if(!s)return;var n=$('sme_n').value.trim();if(!n){alert('A sim needs a name.');return}s.name=n;s.world=$('sme_w').value;s.notes=$('sme_x').value.trim();DREDIT='';dirSave()}
+function dirSimSave(id){var d=dirData(),s=d.sims.find(function(x){return x.id==id});if(!s)return;var n=$('sme_n').value.trim();if(!n){alert('A sim needs a name.');return}s.name=n;if(!$('sme_w').disabled)s.world=$('sme_w').value;s.stage=$('sme_a').value;s.occult=$('sme_o').value;s.magic=$('sme_m').checked;s.notes=$('sme_x').value.trim();DREDIT='';dirSave()}
 function dirSimEdit(id){dirEdit(id)}
 function dirSimDel(id){var d=dirData(),s=d.sims.find(function(x){return x.id==id});if(!s)return;ask('Remove '+s.name+' from the directory?'+(s.records.length?' Their '+s.records.length+' recorded offence'+(s.records.length==1?'':'s')+' will be removed too. Court records are not affected.':''),'Remove',function(){if(s.auto||s.gov||s.law)(d.noAuto=d.noAuto||[]).push(s.name);d.sims=d.sims.filter(function(x){return x.id!=id});d.families.forEach(function(f){f.members=f.members.filter(function(m){return m.sid!=id})});dirSave()})}
 function dirRecDel(sid,rid){var s=dirData().sims.find(function(x){return x.id==sid});if(!s)return;var r=s.records.find(function(x){return x.id==rid});if(!r)return;ask('Remove this record for '+s.name+'? ('+r.kind+': '+r.desc+')','Remove',function(){s.records=s.records.filter(function(x){return x.id!=rid});dirSave()})}
