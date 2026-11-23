@@ -67,10 +67,12 @@ textarea{font:inherit;color:var(--tx);background:var(--card);border:1px solid va
 <div class="row"><button onclick="exportData()">⬇ Export backup</button><button onclick="$('imp').click()">⬆ Import backup</button><input type="file" id="imp" accept=".json,application/json" class="hide" onchange="importData(this)"><span class="mut">Back up regularly. Data is saved in this browser, and on the server when you are connected.</span></div>
 <div id="home">
  <h2 style="margin:0 0 4px">Home</h2><div class="mut" style="margin-bottom:10px">Choose where to go.</div>
+ <div id="offalertH"></div>
  <div id="tiles" class="hm"></div>
 </div>
 <div id="gov" class="hide">
 <div class="row" style="margin:0 0 8px;align-items:center"><button onclick="go('')">← Home</button><b>🏛️ Government</b></div>
+<div id="offalertG"></div>
 <div class="tabs"><button class="t on" id="t1" onclick="tab(1)">Parties &amp; Candidates</button><button class="t" id="t6" onclick="tab(6)">Role manager</button><button class="t" id="t2" onclick="tab(2)">Election</button><button class="t" id="t3" onclick="tab(3)">Government &amp; Opposition</button><button class="t" id="t4" onclick="tab(4)">Parliament</button><button class="t" id="t5" onclick="tab(5)">Pass the bill</button></div>
 
 <div id="v1">
@@ -303,7 +305,7 @@ function leaderGone(c,why){var p=party(c.partyId);if(!p)return;
  if(p.leaderId==c.id){p.leaderId=null;p.lb={reason:'Leader '+why,votes:{}};noteAdd('Leadership','Leadership vacancy in '+p.name+': '+c.name+' ('+why+'). A leadership vote is open on the Parliament tab.')}
  if(p.deputyId==c.id){p.deputyId=null;if(p.id==govId()){p.db={reason:'Deputy Mayor '+why,votes:{}};noteAdd('Deputy Mayor','Deputy Mayor vacancy in '+p.name+': '+c.name+' ('+why+'). A Deputy Mayor vote is open on the Parliament tab.')}}
  if(c.mayor&&p.id==govId())mayorLeaves(c,p,why)}
-function mayorLeaves(c,p,why){var t=today(),d=members(p.id).find(function(x){return x.id==p.deputyId&&x.id!=c.id});S.govPartyId=p.id;
+function mayorLeaves0(c,p,why){var t=today(),d=members(p.id).find(function(x){return x.id==p.deputyId&&x.id!=c.id});S.govPartyId=p.id;
  c.notes=(c.notes?c.notes+'; ':'')+'Mayor until '+t;c.mayor=false;c.interim=false;
  if(!p.lb)p.lb={reason:'Mayor '+why,votes:{}};
  if(d){makeInterim(d,p);noteAdd('Mayor',c.name+' ('+why+') is no longer Mayor. '+d.name+' is now Interim Mayor. '+p.name+' members vote on a replacement on the Parliament tab.')}
@@ -764,7 +766,7 @@ function memberRow(c,assignable){
  return h+(c.secondary?'<button onclick="swapRoles(\''+c.id+'\')" title="Swap primary and secondary roles">⇄ Swap</button>':'')+'<button onclick="edit(\''+c.id+'\')">Edit</button>'+(c.partyId?'<button onclick="releaseCand(\''+c.id+'\')" title="Move to the Unassigned pool">Release</button>':'')+'<select id="r'+c.id+'"><option>Death</option><option>Resigned</option><option>Retired</option></select><button class="d" onclick="rmCand(\''+c.id+'\')">Remove</button></div></div>'}
 
 function render(){
- try{candSimList()}catch(e){}try{justiceRender()}catch(e){console.error(e)}try{dirRender()}catch(e){console.error(e)}
+ try{offRender()}catch(e){}try{candSimList()}catch(e){}try{justiceRender()}catch(e){console.error(e)}try{dirRender()}catch(e){console.error(e)}
  refreshRoleLists();$('rolesTbl').innerHTML=rolesView();$('officeRolesTbl').innerHTML=officeRolesView();
  $('ev').value=S.eligible||'';$('opp').innerHTML=oppView();$('parl').innerHTML=parlView();
  $('notices').innerHTML=(S.notices&&S.notices.length)?S.notices.slice().reverse().map(function(n){return'<div class="m"><div><span class="badge '+(n.type=='Death'?'b':'mut')+'">'+esc(n.type)+'</span> '+esc(n.text)+'</div><small class="mut">'+esc(n.date)+'</small></div>'}).join(''):'<span class="mut">No notices yet.</span>';
@@ -844,7 +846,7 @@ function finishRace(){clearInterval(timer);var hung=R.win<0,w=hung?null:R.rs[R.w
  :'<div class="card" style="margin:8px 0 0"><p style="margin:0">🏆 Winner: <b style="color:'+esc(w.color)+'">'+esc(w.name)+'</b></p><div style="display:flex;gap:8px;align-items:center;margin-top:6px">'+av(mayor)+'<div>New Mayor: <b>'+esc(mayor.name)+'</b>'+(R.mayorNote?' <small class="mut">('+esc(R.mayorNote)+')</small>':'')+'</div></div>'+(R.bumpNote?'<p class="mut" style="margin:6px 0 0">The Mayor holds a Senate seat: '+esc(R.bumpNote)+'.</p>':'')+ob+en+chSum(R.seatSum,R.replay?0:1)+note+'</div>'}
 function portfolio(c){var st=function(x){return(x||'').replace(/^Opposition /,'')},a=st(c.primary),b=st(c.secondary);return ROLES.indexOf(a)>=0?a:ROLES.indexOf(b)>=0?b:null}
 function setRoles(c,p,sc,d){var L=c.log=c.log||[];if((c.primary||'')!=p)L.push(d+' Primary: '+(c.primary||'none')+' → '+(p||'none'));if((c.secondary||'')!=sc)L.push(d+' Secondary: '+(c.secondary||'none')+' → '+(sc||'none'));c.primary=p;c.secondary=sc}
-function commitElection(w,mayor){var d=new Date().toLocaleDateString();
+function commitElection0(w,mayor){var d=new Date().toLocaleDateString();
  if(w){
   var oi=-1,bv=-1;R.rs.forEach(function(r,i){if(i!=R.win&&R.fpc[i]>bv){bv=R.fpc[i];oi=i}});R.oppId=oi>=0?R.rs[oi].id:null;S.oppId=R.oppId;R.oppName=R.oppId&&party(R.oppId)?party(R.oppId).name:null;
   var isOpp=function(r){return /^Opposition /i.test(r||'')};
@@ -1506,7 +1508,7 @@ function homeRefresh(){var t=$('tiles');if(!t)return;t.innerHTML=MODULES.map(fun
  return'<div class="tile'+(m.ready?'':' soon')+'" onclick="go(\''+m.k+'\')"><div class="ti">'+m.icon+'</div><b>'+esc(m.name)+'</b><div class="mut">'+esc(d)+'</div>'+(m.ready?'':'<div style="margin-top:6px"><span class="badge">Coming soon</span></div>')+'</div>'}).join('')}
 function route(){var h=((typeof window!=='undefined'&&window.location&&window.location.hash)||'').replace('#',''),inGov=(h=='government'),inJ=(h=='justice'),inD=(h=='directory');
  $('home').classList.toggle('hide',inGov||inJ||inD);$('gov').classList.toggle('hide',!inGov);$('justice').classList.toggle('hide',!inJ);$('directory').classList.toggle('hide',!inD);
- if(!inGov&&!inJ&&!inD)homeRefresh();if(inJ){JFORCE=true;justiceRender()}if(inD){DIRFORCE=true;dirRender()}try{window.scrollTo(0,0)}catch(e){}}
+ if(!inGov&&!inJ&&!inD)homeRefresh();if(inJ){JFORCE=true;justiceRender()}if(inD){DIRFORCE=true;dirRender()}try{offRender()}catch(e){}try{window.scrollTo(0,0)}catch(e){}}
 function go(k){var m=MODULES.find(function(x){return x.k==k});if(m&&!m.ready){note(m.soonMsg||m.name+' is coming soon.');return}
  try{if(k){window.location.hash='#'+k}else{history.pushState(null,'',window.location.pathname+window.location.search)}}catch(e){}
  route()}
@@ -1515,7 +1517,7 @@ function go(k){var m=MODULES.find(function(x){return x.k==k});if(m&&!m.ready){no
 var DIRTYPES=['Restaurant','Café / Bar','Retail shop','Grocery / Market','Salon / Spa','Gym / Fitness','Bookstore','Art gallery','Clinic','Nightclub / Venue','Office / Services','Hotel / Lodging'];
 var RKINDS=['Conviction','Fine / penalty notice','Caution / warning','Other minor offence'];
 var DIRT=1,DIRFORCE=false,DRBQ='',DRBW='',DRBT='',DRSQ='',DRSW='',DRSR='',DREDIT='',DRREC='',DRREN='';
-function dirData(){if(!S.dir)S.dir={worlds:[],types:DIRTYPES.slice(),businesses:[],sims:[]};var d=S.dir;d.worlds=d.worlds||[];d.types=d.types||[];d.businesses=d.businesses||[];d.sims=d.sims||[];d.lots=d.lots||[];d.ignored=d.ignored||{};d.census=d.census||{};d.families=d.families||[];d.families.forEach(function(f){f.members=f.members||[]});d.sims.forEach(function(x){x.records=x.records||[]});return d}
+function dirData(){if(!S.dir)S.dir={worlds:[],types:DIRTYPES.slice(),businesses:[],sims:[]};var d=S.dir;d.worlds=d.worlds||[];d.types=d.types||[];d.businesses=d.businesses||[];d.sims=d.sims||[];d.lots=d.lots||[];d.ignored=d.ignored||{};d.census=d.census||{};d.govHh=d.govHh||{office:'',parties:{}};d.families=d.families||[];d.families.forEach(function(f){f.members=f.members||[]});d.sims.forEach(function(x){x.records=x.records||[]});return d}
 /* keeps the sim register in step with Government members and court convictions */
 function dirAuto(){var d=dirData(),ch=hhSync(d),skip=function(n){return(d.noAuto||[]).some(function(x){return jSame(x,n)})};
  (S.cands||[]).forEach(function(c){var role=c.status=='active'?(c.mayor?'Mayor':isSeated(c)?c.seat+' member':'Candidate'):'',pt=c.partyId&&party(c.partyId),
@@ -1574,7 +1576,7 @@ function hhKind(t){var k=String(t).toLowerCase().replace(/[^a-z]/g,''),st=LIFE_S
 function hhTraits(x){return(x.stage?' <span class="badge">'+esc(x.stage)+'</span>':'')+(x.occult?' <span class="badge">'+(OCCI[x.occult]||'')+' '+esc(x.occult)+'</span>':'')+(x.magic?' <span class="badge" style="background:#ede7f6">✦ Magical Realms</span>':'')}
 function hhSync(d){var ch=false;if((d.lots||[]).length)d.families.forEach(function(f){var l=f.lotId&&d.lots.find(function(x){return x.id==f.lotId});if(l&&l.world&&f.world!=l.world){f.world=l.world;ch=true}});d.families.forEach(function(f){f.members.forEach(function(m){var sm=d.sims.find(function(x){return x.id==m.sid});if(!sm)return;
   if(f.world&&sm.world!=f.world){sm.world=f.world;ch=true}
-  if(!sm.stage&&m.role){var k=hhKind(m.role);if(k&&k.stage){sm.stage=k.stage;ch=true}}})});ch=lotOwnSync(d)||ch;return ch}
+  if(!sm.stage&&m.role){var k=hhKind(m.role);if(k&&k.stage){sm.stage=k.stage;ch=true}}})});ch=lotOwnSync(d)||ch;ch=offAutoSetup()||ch;return ch}
 function hhSet(sid,f,v){var sm=dirData().sims.find(function(x){return x.id==sid});if(!sm)return;if(f=='magic')sm.magic=!!v;else sm[f]=v;dirSave()}
 function hhSel(sid,f,list,val,blank){return'<select style="max-width:140px" onchange="hhSet(\''+sid+'\',\''+f+'\',this.value)">'+jopts(list,val||'',blank)+'</select>'}
 function hhLeave(d,sid,except){var n=0;d.families.forEach(function(g){if(g!=except&&g.members.some(function(x){return x.sid==sid})){g.members=g.members.filter(function(x){return x.sid!=sid});n++}});return n}
@@ -1639,7 +1641,7 @@ function dirFamRows(){var d=dirData(),q=jNorm(DFQ),L=d.families.filter(function(
   else if(f.notes)h+='<div class="mut">'+esc(f.notes)+'</div>';
   h+=ms.map(function(x){var sid=x.s.id;return'<div class="m"><div><b>'+esc(x.s.name)+'</b>'+hhTraits(x.s)+(x.s.death?' <span class="badge b strong">☠ Deceased</span>':'')+dirBadges(dirStatus(x.s))+(x.s.gov?' <span class="badge mayor">🏛️ '+esc(x.s.gov)+'</span>':'')+(x.s.law?' <span class="badge">'+esc(x.s.law)+'</span>':'')+'</div><div class="row" style="margin:0">'+hhSel(sid,'stage',LIFE_STAGES,x.s.stage,'— life stage —')+hhSel(sid,'occult',OCC,x.s.occult,'— no type —')+'<label class="ck" style="margin:0" title="Falls under the Magical Realms jurisdiction"><input type="checkbox"'+(x.s.magic?' checked':'')+' onchange="hhSet(\''+sid+'\',\'magic\',this.checked)"><span>✦ Magical Realms</span></label>'+famMoveSel(f,sid)+'<button class="d" onclick="famDrop(\''+f.id+'\',\''+sid+'\')" title="Remove from household">✕</button></div></div>'+famMoveNewUi(f,sid)}).join('');
   return h+famPickUi(f)+'<div class="row" style="margin-top:6px"><textarea id="dfa_'+f.id+'" rows="2" placeholder="Add more new sims: one per line, e.g. Sam, Smith, Teen"></textarea><button onclick="famMore(\''+f.id+'\')">Add sims</button></div></div>'}).join('')+dirPager('hh',pg)}
-function dirFamView(){var d=dirData();return'<div class="card"><h2>Create a household</h2><div class="row"><input id="fm_n" placeholder="Household name, also used as the last name (e.g. Citizen)" maxlength="60"><select id="fm_w">'+dirOpts(d.worlds,'','— town / world —')+'</select><select id="fm_l">'+lotOpts('')+'</select><input id="fm_x" placeholder="Notes (optional)" maxlength="300"></div>'
+function dirFamView(){var d=dirData();return offSetupHtml()+'<div class="card"><h2>Create a household</h2><div class="row"><input id="fm_n" placeholder="Household name, also used as the last name (e.g. Citizen)" maxlength="60"><select id="fm_w">'+dirOpts(d.worlds,'','— town / world —')+'</select><select id="fm_l">'+lotOpts('')+'</select><input id="fm_x" placeholder="Notes (optional)" maxlength="300"></div>'
  +'<div class="row"><label class="ck" style="margin:0"><input type="checkbox" id="fm_i"><span>⭐ Important household (keep track of them)</span></label></div>'
  +'<div class="mut" style="margin-bottom:4px"><b>Bulk add sims:</b> one sim per line. Write the first name, then a last name only if it differs from the household name, then the life stage ('+LIFE_STAGES.join(', ')+'). You can also add a type ('+OCC.join(', ')+') and <i>Magical Realms</i>. Sims already in the registry are linked, and new ones are added without duplicates. Everyone takes the household\'s town.</div><div class="row"><textarea id="fm_b" rows="5" placeholder="Jane, Adult&#10;Bob, Adult&#10;Lily, Child&#10;Sam, Smith, Teen, Vampire"></textarea></div><div class="row"><button class="p" onclick="famCreate()">Create household</button></div></div>'
  +'<div class="card"><h2>Households</h2><div class="row"><input id="dfq" style="max-width:320px" placeholder="Search household, member or town…" value="'+esc(DFQ)+'" oninput="dfSq(this.value)"><label class="ck" style="margin:0"><input type="checkbox"'+(DFIMP?' checked':'')+' onchange="dfImp(this.checked)"><span>⭐ Important only</span></label></div><div id="dfres">'+dirFamRows()+'</div></div>'}
@@ -1758,13 +1760,22 @@ function chkRun(mode){var d=dirData(),ig=d.ignored||{},I=[],SM=d.sims,sim=functi
  add('warn','Suspects and witnesses not linked to the registry','Linking lets their history and records line up. Use the buttons below to link them all at once.',Object.keys(ul).map(function(k){var u=ul[k];return{t:u.c.no+': '+u.L.slice(0,5).join(', ')+(u.L.length>5?' …+'+(u.L.length-5):''),go:['case',k]}}),[['chkLinkNames','Link people whose name matches one registry Sim'],['chkAddRest','Add people who are not in the registry']]);
  add('warn','Welfare cases ready to close','Every child has been placed. Close the case with the outcome "Child placed".',wc);
  var sz=0;try{sz=JSON.stringify(S).length}catch(e){}if(mode!='ignored'&&sz>3000000)add('warn','Saved data is getting large',Math.round(sz/1024)+' KB of about 4,000 KB the server allows. Photos take the most space, so remove or shrink some, and export a backup.',[{t:'Export a backup, then remove photos you no longer need.',go:['none','']}]);
+ var O=offHh();
+ add('warn',"Mayor's Office not set up",'Choose the Mayor\'s Office household and each party\'s household on the Households tab, so election alerts can move Sims for you.',(!O?[{t:"The Mayor's Office household is not chosen",go:['tab',4]}]:[]).concat((S.parties||[]).filter(function(p){return members(p.id).length&&!partyHh(p.id)}).map(function(p){return{t:p.name+' has no household chosen',go:['tab',4]}})));
+ var mc=mayorC(),ms=mc&&simOfCand(mc);
+ if(O&&ms&&!O.members.some(function(m){return m.sid==ms.id}))add('bad',"The Mayor is not in the Mayor's Office",'The Mayor should live in the Mayor\'s Office household.',[{t:ms.name+' is Mayor but lives in '+(hhOf(ms.id)?hhOf(ms.id).name:'no household'),go:['sim',ms.id],acts:[['Move them in','chkMoveMayor()']]}]);
+ var liv=O?O.members.filter(function(m){var x=sim(m.sid);return x&&!x.death}).length:0;
+ add('warn',"The Mayor's Office has more than 4 Sims",'It should hold the Mayor and 3 other members.',liv>4?[{t:liv+' living Sims in '+O.name,go:['hh',O.id]}]:[]);
+ add('warn',"Mayor's Office moves still open",'Moves to make in the game, or a choice of members still to make. Open the Home or Government tab.',(S.offMoves||[]).filter(function(b){return b.status=='open'}).map(function(b){return{t:b.date+': '+b.title,go:['gov',b.id]}}));
  return I}
+function chkMoveMayor(){var O=offHh(),mc=mayorC(),ms=mc&&simOfCand(mc);if(O&&ms){offMove(ms.id,O.id);dirSave()}}
 function chkGo(k,id){var d=dirData();
  if(k=='lot'){var l=lotsOf().find(function(x){return x.id==id});dirTab(5);if(l){DLID=l.id;DLQ='';DLW='';DLK='';DLO='';PGX.lot=0;DLOPEN=l.id}dirRefresh()}
  else if(k=='hh'){var f=dFam(id);dirTab(4);if(f){DFID=f.id;DFQ='';DFIMP=false;PGX.hh=0}dirRefresh()}
  else if(k=='sim'){var x=d.sims.find(function(y){return y.id==id});dirTab(2);if(x){DRSID=x.id;DRSQ='';DRSW='';DRSR='';PGX.sims=0}dirRefresh()}
  else if(k=='case'){go('justice');jViewCase(id)}
- else if(k=='tab'){dirTab(+id)}}
+ else if(k=='tab'){dirTab(+id)}
+ else if(k=='gov'){go('government')}}
 function chkFixMembers(){var d=dirData();ask('Remove members who no longer exist from every household?','Remove',function(){d.families.forEach(function(f){f.members=f.members.filter(function(m){return d.sims.some(function(x){return x.id==m.sid})})});dirSave()})}
 function chkFixMulti(){var d=dirData();ask('Keep each Sim in the first household listed and take them out of the others?','Fix',function(){var seen={};d.families.forEach(function(f){f.members=f.members.filter(function(m){if(seen[m.sid])return false;seen[m.sid]=1;return true})});dirSave()})}
 function chkFixLots(){var d=dirData();ask('Remove the links to lots that no longer exist?','Remove links',function(){d.families.forEach(function(f){if(f.lotId&&!lotOf(f))f.lotId=''});d.businesses.forEach(function(b){if(b.lotId&&!lotsOf().some(function(l){return l.id==b.lotId}))b.lotId=''});dirSave()})}
@@ -1816,6 +1827,61 @@ function dirCenView(){var d=dirData();if(CENT&&d.worlds.indexOf(CENT)<0)CENT='';
  var simU=d.sims.filter(function(x){return x.world==CENT&&!x.death&&!hhOf(x.id)}),hhT=d.families.filter(function(f){return f.world==CENT}).sort(function(a,b){return a.name.localeCompare(b.name)});
  h+='<div class="card"><h2>Sims in '+esc(CENT)+' not in a household ('+simU.length+')</h2>'+(simU.length?simU.slice(0,10).map(function(x){return'<div class="m"><div><b>'+esc(x.name)+'</b> '+hhTraits(x)+'</div><select onchange="famAddSim(this.value,\''+x.id+'\')"><option value="">Add to a household…</option>'+hhT.map(function(f){return'<option value="'+f.id+'">'+esc(f.name)+'</option>'}).join('')+'</select></div>'}).join('')+(simU.length>10?'<div class="mut">…and '+(simU.length-10)+' more. Use the Households tab for the rest.</div>':''):'<div class="mut">Every Sim in this town is in a household.</div>')+'</div>';
  return h}
+/* ===== Mayor's Office moves ===== */
+function govHh(){var d=dirData();d.govHh=d.govHh||{office:'',parties:{}};d.govHh.parties=d.govHh.parties||{};return d.govHh}
+function offHh(){var g=govHh();return g.office?dFam(g.office):null}
+function partyHh(pid){var g=govHh();return g.parties[pid]?dFam(g.parties[pid]):null}
+function simOfCand(c){return c?dirData().sims.find(function(x){return x.candId==c.id}):null}
+function offAutoSetup(){var d=dirData(),g=govHh(),ch=false;
+ if(!g.office||!dFam(g.office)){var o=d.families.filter(function(f){return/mayor/i.test(f.name)});if(o.length==1){g.office=o[0].id;ch=true}}
+ (S.parties||[]).forEach(function(p){if(g.parties[p.id]&&dFam(g.parties[p.id]))return;var pn=jNorm(p.name);if(pn.length<3)return;var C=d.families.filter(function(f){var fn=jNorm(f.name);return fn.length>=3&&f.id!=g.office&&(fn.indexOf(pn)>=0||pn.indexOf(fn)>=0)});if(C.length==1){g.parties[p.id]=C[0].id;ch=true}});return ch}
+function offSetupHtml(){var d=dirData(),g=govHh(),opt=function(sel){return jopts(d.families.slice().sort(function(a,b){return a.name.localeCompare(b.name)}).map(function(f){return{v:f.id,t:f.name+(f.world?' · '+f.world:'')}}),sel||'','— choose a household —')};
+ return'<div class="card"><h2>Mayor\'s Office and party households</h2><div class="mut" style="margin-bottom:6px">Used by the election alerts, so the app knows where Sims move to and from. The app picks a household automatically when only one name fits. Check them here.</div><div class="row"><label class="mut">Mayor\'s Office household <select onchange="offSet(\'office\',this.value)">'+opt(g.office)+'</select></label></div>'+(S.parties||[]).map(function(p){return'<div class="row"><label class="mut">'+esc(p.name)+' household <select onchange="offSet(\''+p.id+'\',this.value)">'+opt(g.parties[p.id])+'</select></label></div>'}).join('')+'</div>'}
+function offSet(k,v){var g=govHh();if(k=='office')g.office=v;else g.parties[k]=v;dirSave()}
+function offMove(simId,hhId){var d=dirData(),f=hhId&&dFam(hhId);if(!f||!simId)return false;if(!f.members.some(function(m){return m.sid==simId})){hhLeave(d,simId,f);f.members.push({sid:simId,role:''})}return true}
+function offBatch(title,reason){var b={id:uid(),date:today(),title:title,reason:reason,steps:[],need:0,pickParty:'',status:'open'};(S.offMoves=S.offMoves||[]).push(b);return b}
+function offStep(b,sim,name,toHh,note){var from=sim&&hhOf(sim.id),st={id:uid(),simId:sim?sim.id:'',name:name,fromId:from?from.id:'',fromName:from?from.name:'no household',toId:toHh?toHh.id:'',toName:toHh?toHh.name:'',applied:false,done:false,note:note||''};
+ if(sim&&toHh)st.applied=offMove(sim.id,toHh.id);else if(!sim)st.note='This Sim is not in the registry.';b.steps.push(st);return st}
+function offElection(oldId,newId){var O=offHh(),oc=oldId&&S.cands.find(function(x){return x.id==oldId}),nc=S.cands.find(function(x){return x.id==newId});if(!nc||oldId==newId)return;
+ var np=party(nc.partyId),b=offBatch('Election result','The new Mayor is '+nc.name+(np?' ('+np.name+')':'')+(oc?'. The previous Mayor was '+oc.name+'.':'.')),same=!!(oc&&oc.partyId==nc.partyId),stay=0,d=dirData();
+ var out=function(x){var c=S.cands.find(function(y){return y.id==x.candId}),to=c?partyHh(c.partyId):null;offStep(b,x,x.name,to,to?'':'Party household not set, so choose where they go.')};
+ if(O){O.members.slice().forEach(function(m){var x=d.sims.find(function(y){return y.id==m.sid});if(!x||x.death)return;if(same&&oc&&x.candId!=oc.id){stay++;return}out(x)})}
+ else{var os=simOfCand(oc);if(os)out(os)}
+ var ns=simOfCand(nc);if(!(O&&ns&&O.members.some(function(m){return m.sid==ns.id})))offStep(b,ns,nc.name,O,O?'':"The Mayor's Office household is not set up.");
+ if(O)b.need=Math.max(0,3-stay);b.pickParty=nc.partyId;
+ noteAdd("Mayor's Office","Election: "+nc.name+" is the new Mayor. Moves are needed in the game. See the alert on the Home or Government tab.");save()}
+function offMayorLeaves(cid,depId,why){var c=S.cands.find(function(x){return x.id==cid}),dep=depId&&depId!=cid&&S.cands.find(function(x){return x.id==depId}),O=offHh();if(!c)return;
+ var died=/died|death/i.test(why),b=offBatch('Mayor '+c.name+' '+(died?'died':'is no longer Mayor ('+why+')'),dep?dep.name+' becomes Interim Mayor unopposed and stays at the Mayor\'s Office until the next election.':'There is no Deputy Mayor, so the office is vacant until the party votes on one.'),sim=simOfCand(c);
+ if(!died&&sim)offStep(b,sim,c.name,null,'Another household, or a new household on a separate lot.');
+ if(dep&&O){var ds=simOfCand(dep);if(ds&&!O.members.some(function(m){return m.sid==ds.id}))offStep(b,ds,dep.name,O)}
+ if(O){var n=O.members.filter(function(m){var x=dirData().sims.find(function(y){return y.id==m.sid});return x&&!x.death&&(died||!sim||x.id!=sim.id)}).length;b.reason+=' '+n+' Sim'+(n==1?'':'s')+' will be at the Mayor\'s Office.'}
+ noteAdd("Mayor's Office",c.name+(died?' died':' left office')+'. See the Mayor\'s Office alert on the Home or Government tab.');save()}
+function commitElection(w,mayor){var oc=mayorC(),oid=oc?oc.id:null;commitElection0(w,mayor);try{if(w&&mayor)offElection(oid,mayor.id)}catch(e){console.error(e)}}
+function mayorLeaves(c,p,why){var dep=p.deputyId;mayorLeaves0(c,p,why);try{offMayorLeaves(c.id,dep,why)}catch(e){console.error(e)}}
+function offStepHtml(b,s){var th=s.toId&&dFam(s.toId),over=th&&th.members.length>8,d=dirData();
+ var h='<div class="m" style="display:block"><label class="ck" style="margin:0"><input type="checkbox"'+(s.done?' checked':'')+' onchange="offTick(\''+b.id+'\',\''+s.id+'\',this.checked)"><span>'+(s.toId?'Move <b>'+esc(s.name)+'</b> from '+esc(s.fromName)+' to <b>'+esc(s.toName)+'</b>':'Move <b>'+esc(s.name)+'</b> out of '+esc(s.fromName))+'</span></label> '+(s.toId?(s.applied?'<span class="badge g">Updated in the app ✓</span>':'<span class="badge b">Not updated in the app</span>'):'')+(over?' <span class="badge b strong">⚠ over 8 Sims</span>':'')+(s.note?' <small class="mut">'+esc(s.note)+'</small>':'');
+ if(!s.toId&&s.simId)h+='<div class="row" style="margin:4px 0 0"><select id="ds_'+s.id+'"><option value="">Join an existing household…</option>'+d.families.filter(function(f){return f.id!=govHh().office}).sort(function(a,c){return a.name.localeCompare(c.name)}).map(function(f){return'<option value="'+f.id+'">'+esc(f.name)+(f.world?' · '+esc(f.world):'')+'</option>'}).join('')+'</select><input id="dn_'+s.id+'" maxlength="60" placeholder="…or a new household name" style="max-width:220px"><select id="dl_'+s.id+'">'+lotOpts('')+'</select><button class="p" onclick="offDest(\''+b.id+'\',\''+s.id+'\')">Move</button></div>';
+ return h+'</div>'}
+function offPickHtml(b){var P=party(b.pickParty),O=offHh(),dep=P&&P.deputyId&&S.cands.find(function(x){return x.id==P.deputyId}),d=dirData();
+ var L=members(b.pickParty).filter(function(c){return!c.mayor}).map(function(c){return{c:c,s:simOfCand(c)}}).filter(function(x){return x.s&&!x.s.death&&!O.members.some(function(m){return m.sid==x.s.id})});
+ return'<div class="sec"><b>Choose '+b.need+' more Mayor\'s Office member'+(b.need==1?'':'s')+' from '+esc(P?P.name:'the party')+'</b><div class="mut">The party chooses them, and one of them is the Deputy Mayor.'+(dep?'':' The Deputy Mayor vote is still open, so you can move the others now and the deputy later.')+'</div>'+(L.length?L.map(function(x){var isD=dep&&x.c.id==dep.id,h=hhOf(x.s.id);return'<label class="ck" style="margin:2px 0"><input type="checkbox" id="pk_'+b.id+'_'+x.c.id+'"'+(isD?' checked':'')+'><span>'+esc(x.s.name)+(isD?' <span class="badge g">Deputy Mayor</span>':'')+' <small class="mut">'+(h?'now in '+esc(h.name):'no household')+'</small></span></label>'}).join(''):'<div class="mut">No other eligible party members are in the registry.</div>')+'<div class="row" style="margin:6px 0 0"><button class="p" onclick="offPick(\''+b.id+'\')">Move the ticked members into the Mayor\'s Office</button></div></div>'}
+function offAlertHtml(){var B=(S.offMoves||[]).filter(function(b){return b.status=='open'});if(!B.length)return'';var O=offHh();
+ return B.map(function(b){var allDone=b.steps.every(function(s){return s.done&&(s.toId||!s.simId)})&&b.need<=0;
+  return'<div class="card" style="border-left:6px solid #b7791f"><div class="row" style="margin:0;justify-content:space-between"><b>🏛️ Mayor\'s Office: moves needed in the game</b><span class="row" style="margin:0"><small class="mut">'+esc(b.date)+'</small><button class="d" onclick="offDismiss(\''+b.id+'\')">Dismiss</button></span></div><div class="mut">'+esc(b.title)+'. '+esc(b.reason)+'</div>'+(!O?'<div class="b">Choose the Mayor\'s Office household on the Households tab so the app can make these moves.</div>':'')+(b.steps.length?b.steps.map(function(s){return offStepHtml(b,s)}).join(''):'<div class="mut">No Sims need to move in the game.</div>')+(b.need>0&&O?offPickHtml(b):'')+'<div class="row" style="margin:6px 0 0"><button class="p" onclick="offComplete(\''+b.id+'\')"'+(allDone?'':' disabled')+'>All done, close this alert</button></div></div>'}).join('')}
+function offRender(){var h=$('offalertH'),g=$('offalertG');if(!h||!g)return;var homeShown=!$('home').classList.contains('hide'),govShown=!$('gov').classList.contains('hide');h.innerHTML=homeShown?offAlertHtml():'';g.innerHTML=govShown?offAlertHtml():''}
+function offBatchOf(id){return(S.offMoves||[]).find(function(b){return b.id==id})}
+function offTick(bid,sid,on){var b=offBatchOf(bid),s=b&&b.steps.find(function(x){return x.id==sid});if(s){s.done=!!on;save()}}
+function offComplete(bid){var b=offBatchOf(bid);if(b){b.status='done';save()}}
+function offDismiss(bid){ask('Dismiss this alert without finishing it? The moves already made in the app stay.','Dismiss',function(){var b=offBatchOf(bid);if(b){b.status='dismissed';save()}})}
+function offDest(bid,sid){var b=offBatchOf(bid),s=b&&b.steps.find(function(x){return x.id==sid});if(!s)return;var d=dirData(),hid=$('ds_'+sid).value,nm=($('dn_'+sid).value||'').trim(),lid=$('dl_'+sid).value;
+ if(!hid&&!nm){alert('Choose an existing household, or type a name for a new one.');return}
+ if(!hid){var lot=lid&&lotsOf().find(function(l){return l.id==lid}),fr=s.fromId&&dFam(s.fromId),f={id:uid(),name:nm,world:lot&&lot.world?lot.world:(fr?fr.world:''),lotId:lid||'',notes:'',important:false,members:[],added:today()};
+  if(d.families.some(function(x){return jNorm(x.name)==jNorm(nm)&&jNorm(x.world||'')==jNorm(f.world||'')})){alert('There is already a household called '+nm+'. Pick it from the list instead.');return}d.families.push(f);hid=f.id}
+ var th=dFam(hid);offMove(s.simId,hid);s.toId=hid;s.toName=th?th.name:'';s.applied=true;save()}
+function offPick(bid){var b=offBatchOf(bid),O=offHh();if(!b||!O)return;var P=members(b.pickParty).filter(function(c){return!c.mayor}),sel=[];
+ P.forEach(function(c){var el=$('pk_'+bid+'_'+c.id);if(el&&el.checked)sel.push(c)});
+ if(!sel.length){alert('Tick at least one member first.');return}if(sel.length>b.need){alert('Only '+b.need+' more member'+(b.need==1?'':'s')+' can join the Mayor\'s Office. Untick '+(sel.length-b.need)+'.');return}
+ sel.forEach(function(c){var x=simOfCand(c);offStep(b,x,c.name,O)});b.need-=sel.length;save()}
 function lotOpen(id){DLOPEN=DLOPEN==id?'':id;dirRefresh()}
 function lotSq(v){DLQ=v;DLID='';PGX.lot=0;var r=$('ltres');if(r)r.innerHTML=lotRows()}
 function lotF(k,v){PGX.lot=0;DLID='';if(k=='w')DLW=v;else if(k=='k')DLK=v;else DLO=v;dirRefresh()}
